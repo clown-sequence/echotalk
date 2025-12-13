@@ -7,47 +7,73 @@ interface UseUserPresenceOptions {
   enabled?: boolean;
 }
 
-export const useUserPresence = ({ userId, enabled = true }: UseUserPresenceOptions) => {
+interface UseUserPresenceReturn {
+  presence: UserPresence | null;
+  loading: boolean;
+}
+
+export const useUserPresence = ({ 
+  userId, 
+  enabled = true 
+}: UseUserPresenceOptions): UseUserPresenceReturn => {
   const [presence, setPresence] = useState<UserPresence | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const db = getFirestore();
 
   useEffect(() => {
     if (!userId || !enabled) {
-      setPresence(null);
-      setLoading(false);
       return;
     }
 
-    setLoading(true);
+    console.log('[UserPresence] Setting up listener for user:', userId);
 
+    // Reference to the user document
     const userRef = doc(db, 'users', userId);
     
-    // Real-time listener for user presence
+    /**
+     * Real-time listener for user presence updates
+     */
     const unsubscribe = onSnapshot(
       userRef,
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
-          setPresence(data.presence || {
+          
+          // Extract presence data or set default
+          const userPresence: UserPresence = data.presence || {
+            uid: userId,
+            isOnline: false,
+            lastSeen: null,
+            lastActivity: null,
+          };
+          
+          setPresence(userPresence);
+          console.log('[UserPresence] Updated:', userPresence);
+        } else {
+          // User document doesn't exist
+          console.warn('[UserPresence] User document not found:', userId);
+          setPresence({
             uid: userId,
             isOnline: false,
             lastSeen: null,
             lastActivity: null,
           });
-        } else {
-          setPresence(null);
         }
         setLoading(false);
       },
       (error) => {
-        console.error('Error fetching user presence:', error);
+        console.error('[UserPresence] Error fetching presence:', error);
+        setPresence(null);
         setLoading(false);
       }
     );
 
-    return () => unsubscribe();
-  }, [userId, enabled]);
+    // Cleanup: Unsubscribe from listener
+    return () => {
+      console.log('[UserPresence] Cleaning up listener for user:', userId);
+      unsubscribe();
+    };
+  }, [userId, enabled, db]);
 
   return { presence, loading };
 };
