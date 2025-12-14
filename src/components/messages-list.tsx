@@ -7,57 +7,35 @@ import React, { useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Check, CheckCheck, User } from 'lucide-react';
 import { Timestamp } from 'firebase/firestore';
-import { formatDistanceToNow } from 'date-fns';
-
-// ============================================
-// Type Definitions
-// ============================================
-
-/**
- * Message document structure
- */
 export interface MessageDocument {
   id: string;
   chatRoomId: string;
   senderId: string;
   text: string;
   createdAt: Timestamp;
-  read: boolean;
+  read?: boolean;
+  type?: 'text' | 'image' | 'file';
+  imageUrl?: string;
+  fileUrl?: string;
+  fileName?: string;
 }
 
-/**
- * Raw Firestore timestamp format (fallback)
- */
 interface FirestoreRawTimestamp {
   _seconds: number;
   _nanoseconds?: number;
 }
 
-/**
- * Union type for all possible timestamp formats
- */
 type TimestampValue = Timestamp | Date | string | number | FirestoreRawTimestamp | null | undefined;
-
-/**
- * Result of timestamp parsing
- */
 interface MessageTimeResult {
   date: Date | null;
   isValid: boolean;
 }
-
-/**
- * Component props
- */
 interface MessagesListProps {
   messages: MessageDocument[];
   currentUserId: string;
   loading?: boolean;
 }
 
-/**
- * Motion animation variants
- */
 const isFirestoreTimestamp = (value: unknown): value is Timestamp => {
   return (
     value instanceof Timestamp ||
@@ -67,10 +45,6 @@ const isFirestoreTimestamp = (value: unknown): value is Timestamp => {
       typeof (value as Record<string, unknown>).toDate === 'function')
   );
 };
-
-/**
- * Type guard to check if value is raw Firestore timestamp format
- */
 const isRawFirestoreTimestamp = (value: unknown): value is FirestoreRawTimestamp => {
   return (
     typeof value === 'object' &&
@@ -79,35 +53,23 @@ const isRawFirestoreTimestamp = (value: unknown): value is FirestoreRawTimestamp
     typeof (value as FirestoreRawTimestamp)._seconds === 'number'
   );
 };
-
-/**
- * Safely extract date from various timestamp formats
- */
 const getDateFromTimestamp = (timestamp: TimestampValue): MessageTimeResult => {
   try {
-    // Handle null/undefined
     if (timestamp == null) {
       return { date: null, isValid: false };
     }
-
-    // Handle Firestore Timestamp
     if (isFirestoreTimestamp(timestamp)) {
       const date = timestamp.toDate();
       return { date, isValid: date instanceof Date && !isNaN(date.getTime()) };
     }
-
-    // Handle Date object
     if (timestamp instanceof Date) {
       return { date: timestamp, isValid: !isNaN(timestamp.getTime()) };
     }
-
-    // Handle string or number
     if (typeof timestamp === 'string' || typeof timestamp === 'number') {
       const date = new Date(timestamp);
       return { date, isValid: !isNaN(date.getTime()) };
     }
 
-    // Handle raw Firestore format
     if (isRawFirestoreTimestamp(timestamp)) {
       const date = new Date(timestamp._seconds * 1000);
       return { date, isValid: !isNaN(date.getTime()) };
@@ -119,10 +81,6 @@ const getDateFromTimestamp = (timestamp: TimestampValue): MessageTimeResult => {
     return { date: null, isValid: false };
   }
 };
-
-/**
- * Format message time to relative time (e.g., "2 hours ago")
- */
 const formatMessageTime = (timestamp: TimestampValue): string => {
   const { date, isValid } = getDateFromTimestamp(timestamp);
 
@@ -131,28 +89,43 @@ const formatMessageTime = (timestamp: TimestampValue): string => {
   }
 
   try {
-    return formatDistanceToNow(date, { addSuffix: true });
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+    const diffWeeks = Math.floor(diffDays / 7);
+    const diffMonths = Math.floor(diffDays / 30);
+    const diffYears = Math.floor(diffDays / 365);
+    if (diffSeconds < 10) return 'just now';
+    if (diffSeconds < 60) return `${diffSeconds} seconds ago`;
+    if (diffMinutes === 1) return '1 minute ago';
+    if (diffMinutes < 60) return `${diffMinutes} minutes ago`;
+    if (diffHours === 1) return '1 hour ago';
+    if (diffHours < 24) return `${diffHours} hours ago`;
+    if (diffDays === 1) return 'yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffWeeks === 1) return '1 week ago';
+    if (diffWeeks < 4) return `${diffWeeks} weeks ago`;
+    if (diffMonths === 1) return '1 month ago';
+    if (diffMonths < 12) return `${diffMonths} months ago`;
+    if (diffYears === 1) return '1 year ago';
+    return `${diffYears} years ago`;
   } catch (error) {
     console.warn('Error formatting time:', error);
     return '';
   }
 };
-
-/**
- * Safely get message text with proper typing
- */
 const getMessageText = (message: MessageDocument): string => {
-  // Handle string
   if (typeof message.text === 'string') {
     return message.text;
   }
 
-  // Handle undefined or null
   if (message.text == null) {
     return '';
   }
 
-  // Handle other types (convert to string)
   try {
     return String(message.text);
   } catch (error) {
@@ -160,40 +133,25 @@ const getMessageText = (message: MessageDocument): string => {
     return '[Message could not be displayed]';
   }
 };
-
-/**
- * Get timestamp from message
- */
 const getMessageTimestamp = (message: MessageDocument): Timestamp => {
   return message.createdAt;
 };
-
-/**
- * Determine if message is from current user
- */
+const isMessageRead = (message: MessageDocument): boolean => {
+  return message.read ?? false; // Use nullish coalescing for default
+};
 const isOwnMessage = (message: MessageDocument, currentUserId: string): boolean => {
   return message.senderId === currentUserId;
 };
 
-/**
- * Check if current message is first in a sequence from the same sender
- */
 const isFirstInSequence = (messages: MessageDocument[], index: number): boolean => {
   if (index === 0) return true;
   return messages[index].senderId !== messages[index - 1].senderId;
 };
 
-/**
- * Check if current message is last in a sequence from the same sender
- */
 const isLastInSequence = (messages: MessageDocument[], index: number): boolean => {
   if (index === messages.length - 1) return true;
   return messages[index].senderId !== messages[index + 1].senderId;
 };
-
-/**
- * Generate bubble corner radius classes
- */
 const getBubbleCornerClasses = (
   firstInSequence: boolean,
   lastInSequence: boolean,
@@ -211,58 +169,19 @@ const getBubbleCornerClasses = (
 
   return classes;
 };
-
-/**
- * Truncate sender ID for display
- */
 const truncateSenderId = (senderId: string, maxLength: number = 8): string => {
   if (senderId.length <= maxLength) {
     return senderId;
   }
   return `${senderId.substring(0, maxLength)}...`;
 };
-
-// ============================================
-// Component Implementation
-// ============================================
-
-/**
- * MessagesList Component
- * 
- * Displays a list of messages with:
- * - Auto-scroll to bottom
- * - Message grouping by sender
- * - Read receipts
- * - Relative timestamps
- * - Animations
- * 
- * @example
- * ```tsx
- * <MessagesList
- *   messages={messages}
- *   currentUserId={user.uid}
- *   loading={isLoading}
- * />
- * ```
- */
 export const MessagesList: React.FC<MessagesListProps> = ({
   messages,
   currentUserId,
   loading = false,
 }) => {
-  // ============================================
-  // Refs
-  // ============================================
-  
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // ============================================
-  // Effects
-  // ============================================
-  
-  /**
-   * Auto-scroll to bottom when messages change
-   */
   useEffect((): void => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({
@@ -272,10 +191,6 @@ export const MessagesList: React.FC<MessagesListProps> = ({
     }
   }, [messages]);
 
-  // ============================================
-  // Render: Loading State
-  // ============================================
-  
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -291,10 +206,6 @@ export const MessagesList: React.FC<MessagesListProps> = ({
     );
   }
 
-  // ============================================
-  // Render: Empty State
-  // ============================================
-  
   if (messages.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -316,11 +227,6 @@ export const MessagesList: React.FC<MessagesListProps> = ({
       </div>
     );
   }
-
-  // ============================================
-  // Render: Messages List
-  // ============================================
-  
   return (
     <div className="h-full overflow-y-auto custom-scrollbar">
       <div className="p-4 space-y-1">
@@ -333,6 +239,7 @@ export const MessagesList: React.FC<MessagesListProps> = ({
             lastInSequence,
             ownMessage
           );
+          const messageRead = isMessageRead(message);
 
           return (
             <motion.div
@@ -352,7 +259,7 @@ export const MessagesList: React.FC<MessagesListProps> = ({
                 {/* Message bubble */}
                 <motion.div
                   whileHover={{ scale: 1.01 }}
-                  className={`px-4 py-3 ${bubbleCornerClasses} ${
+                  className={`px-4 py-3 shadow-sm ${bubbleCornerClasses} ${
                     ownMessage
                       ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white'
                       : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white'
@@ -382,17 +289,22 @@ export const MessagesList: React.FC<MessagesListProps> = ({
                     {/* Read receipts for own messages */}
                     {ownMessage && (
                       <div className="flex items-center">
-                        {message.read ? (
-                          <CheckCheck className="w-3 h-3 text-white/70" />
+                        {messageRead ? (
+                          <CheckCheck 
+                            className="w-3 h-3 text-white/70" 
+                            aria-label="Message read"
+                          />
                         ) : (
-                          <Check className="w-3 h-3 text-white/70" />
+                          <Check 
+                            className="w-3 h-3 text-white/70"
+                            aria-label="Message sent"
+                          />
                         )}
                       </div>
                     )}
                   </div>
                 </motion.div>
 
-                {/* Sender name for first message in sequence from other users */}
                 {!ownMessage && firstInSequence && (
                   <span className="text-xs text-gray-500 dark:text-gray-400 mt-1 px-2">
                     {truncateSenderId(message.senderId)}
@@ -403,8 +315,7 @@ export const MessagesList: React.FC<MessagesListProps> = ({
           );
         })}
 
-        {/* Scroll anchor */}
-        <div ref={messagesEndRef} className="h-px" />
+        <div ref={messagesEndRef} className="h-px" aria-hidden="true" />
       </div>
     </div>
   );

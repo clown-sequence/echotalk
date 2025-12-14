@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, Users, Menu, MessageCircle, Video, Phone, TestTube, Search, MoreVertical, Settings, Bell } from 'lucide-react';
+import { LogOut, Users, Menu, MessageCircle, Video, Phone, TestTube, Settings, Bell } from 'lucide-react';
 import type { User as FirebaseAuthUser } from 'firebase/auth';
 import { useAuth } from '../contexts/auth-contexts';
 import { useUsers } from '../hooks/use-users';
@@ -8,7 +8,6 @@ import { useChatRooms } from '../hooks/use-chat-rooms';
 import { useMessages } from '../hooks/use-message';
 import { usePresence } from '../hooks/use-presence';
 import { useVideoCall } from '../hooks/use-video-call';
-import { UsersList } from '../components/users-list';
 import { MessagesList } from '../components/messages-list';
 import { MessageInput } from '../components/message-input';
 import { PresenceIndicator } from '../components/presence-indicator';
@@ -18,9 +17,17 @@ import {
   OutgoingCallModal,
   VideoCallWindow,
 } from '../components/video-call-ui';
-import { type CallDocument, CallType, CallStatus, type UserDocument, type MessageDocument } from '../types';
+import { 
+  type CallDocument,  
+  type UserDocument, 
+  type MessageDocument, 
+  type ChatRoomDocument,
+  CALL_STATUS, 
+  CALL_TYPE 
+} from '../types';
 import { usersToUserDocuments } from '../lib/utils';
 import { SidebarContent } from './sidebar-content';
+import type { Timestamp } from 'firebase/firestore';
 
 export const EchoTalk: React.FC = () => {
   const { user, logout } = useAuth();
@@ -52,7 +59,7 @@ export const EchoTalk: React.FC = () => {
     toggleVideo,
   } = useVideoCall({
     currentUserId: user?.uid || '',
-    onCallReceived: (call) => {
+    onCallReceived: (call: CallDocument) => {
       console.log('📞 Incoming call received:', call);
       setIncomingCall(call);
     },
@@ -71,7 +78,7 @@ export const EchoTalk: React.FC = () => {
   });
 
   // Convert to UserDocument[]
-  const users = useMemo(() => {
+  const users = useMemo<UserDocument[]>(() => {
     const firebaseUsers = rawUsers as unknown as FirebaseAuthUser[];
     return usersToUserDocuments(firebaseUsers);
   }, [rawUsers]);
@@ -91,27 +98,34 @@ export const EchoTalk: React.FC = () => {
   });
 
   // Convert messages to MessageDocument format
-  const convertedMessages = useMemo(() => {
+  const convertedMessages = useMemo<MessageDocument[]>(() => {
     if (!messages || !Array.isArray(messages)) return [];
     
-    return messages.map(msg => ({
-      id: msg.id || '',
-      senderId: msg.senderId || '',
-      text: typeof msg.text === 'string' ? msg.text : String(msg.text || ''),
-      createdAt: (msg as any).timestamp || msg.createdAt,
-      chatRoomId: msg.chatRoomId || '',
-      read: (msg as any).read || false,
-    } as MessageDocument));
+    return messages.map((msg): MessageDocument => {
+      // Handle timestamp field that might be named differently
+      const timestamp = (msg as MessageDocument & { timestamp?: Timestamp }).timestamp || msg.createdAt;
+      
+      return {
+        id: msg.id || '',
+        senderId: msg.senderId || '',
+        text: typeof msg.text === 'string' ? msg.text : String(msg.text || ''),
+        createdAt: timestamp,
+        chatRoomId: msg.chatRoomId || '',
+        read: (msg as MessageDocument & { read?: boolean }).read || false,
+      } as MessageDocument;
+    });
   }, [messages]);
 
-  const totalUnread = chatRooms.reduce((acc, room) => {
-    return acc + (room.unreadCount?.[user?.uid || ''] || 0);
-  }, 0);
+  const totalUnread = useMemo<number>(() => {
+    return chatRooms.reduce((acc: number, room: ChatRoomDocument) => {
+      return acc + (room.unreadCount?.[user?.uid || ''] || 0);
+    }, 0);
+  }, [chatRooms, user?.uid]);
 
   // Chat handlers
   const handleSelectUser = async (selectedUser: UserDocument): Promise<void> => {
     setSelectedChatUser(selectedUser);
-    const existingRoom = chatRooms.find(room => 
+    const existingRoom = chatRooms.find((room: ChatRoomDocument) => 
       room.participants.includes(selectedUser.uid)
     );
     
@@ -168,7 +182,7 @@ export const EchoTalk: React.FC = () => {
         selectedChatUser.uid,
         selectedChatUser.displayName,
         selectedChatUser.userImg || '',
-        CallType.VIDEO
+        CALL_TYPE.VIDEO
       );
     } catch (error) {
       console.error('Error starting video call:', error);
@@ -183,7 +197,7 @@ export const EchoTalk: React.FC = () => {
         selectedChatUser.uid,
         selectedChatUser.displayName,
         selectedChatUser.userImg || '',
-        CallType.AUDIO
+        CALL_TYPE.AUDIO
       );
     } catch (error) {
       console.error('Error starting audio call:', error);
@@ -221,18 +235,18 @@ export const EchoTalk: React.FC = () => {
   };
 
   // Filter chat rooms and users based on search
-  const filteredChatRooms = useMemo(() => {
+  const filteredChatRooms = useMemo<ChatRoomDocument[]>(() => {
     if (!searchQuery) return chatRooms;
-    return chatRooms.filter(room => {
-      const otherUserId = room.participants.find(p => p !== user?.uid);
-      const otherUser = users.find(u => u.uid === otherUserId);
+    return chatRooms.filter((room: ChatRoomDocument) => {
+      const otherUserId = room.participants.find((p: string) => p !== user?.uid);
+      const otherUser = users.find((u: UserDocument) => u.uid === otherUserId);
       return otherUser?.displayName.toLowerCase().includes(searchQuery.toLowerCase());
     });
   }, [chatRooms, users, searchQuery, user?.uid]);
 
-  const filteredUsers = useMemo(() => {
+  const filteredUsers = useMemo<UserDocument[]>(() => {
     if (!searchQuery) return users;
-    return users.filter(u => 
+    return users.filter((u: UserDocument) => 
       u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email?.toLowerCase().includes(searchQuery.toLowerCase())
     );
@@ -256,7 +270,7 @@ export const EchoTalk: React.FC = () => {
       {/* Outgoing Call Modal */}
       <AnimatePresence>
         {callState.isInCall && 
-         callState.status === CallStatus.RINGING && 
+         callState.status === CALL_STATUS.RINGING && 
          callState.isCaller && (
           <OutgoingCallModal
             receiverName={callState.otherUser?.displayName || 'Unknown'}
@@ -270,7 +284,7 @@ export const EchoTalk: React.FC = () => {
       {/* Video Call Window */}
       <AnimatePresence>
         {callState.isInCall && 
-         callState.status === CallStatus.CONNECTED && (
+         callState.status === CALL_STATUS.CONNECTED && (
           <VideoCallWindow
             callState={callState}
             onEndCall={handleEndCall}
@@ -349,40 +363,46 @@ export const EchoTalk: React.FC = () => {
         {/* Main Content */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex gap-6 h-[calc(100vh-8rem)]">
-            {/* Sidebar */}
+            {/* Mobile Sidebar */}
             <AnimatePresence>
               {isMobileMenuOpen && (
                 <motion.div
                   initial={{ opacity: 0, x: -300 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -300 }}
-                  className="fixed inset-y-0 left-0 z-40 w-80 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 lg:hidden"
+                  className="fixed inset-y-0 left-0 z-40 w-80 lg:hidden"
                 >
-                  <div className="h-full flex flex-col">
-                    <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-800">
+                  {/* Full height container */}
+                  <div className="h-full flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800">
+                    {/* Mobile menu header - Fixed */}
+                    <div className="flex-shrink-0 flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-800">
                       <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Menu</h2>
                       <button
                         onClick={() => setIsMobileMenuOpen(false)}
-                        className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                        className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                       >
                         <Menu className="w-5 h-5" />
                       </button>
                     </div>
-                    <SidebarContent
-                      view={view}
-                      setView={setView}
-                      user={user}
-                      totalUnread={totalUnread}
-                      users={filteredUsers}
-                      chatRooms={filteredChatRooms}
-                      currentUserId={user?.uid || ''}
-                      selectedUserId={selectedChatUser?.uid}
-                      onSelectUser={handleSelectUser}
-                      onSelectChatRoom={handleSelectChatRoom}
-                      loading={chatRoomsLoading}
-                      searchQuery={searchQuery}
-                      setSearchQuery={setSearchQuery}
-                    />
+                    
+                    {/* Scrollable content area */}
+                    <div className="flex-1 overflow-hidden">
+                      <SidebarContent
+                        view={view}
+                        setView={setView}
+                        user={user}
+                        totalUnread={totalUnread}
+                        users={filteredUsers}
+                        chatRooms={filteredChatRooms}
+                        currentUserId={user?.uid || ''}
+                        selectedUserId={selectedChatUser?.uid}
+                        onSelectUser={handleSelectUser}
+                        onSelectChatRoom={handleSelectChatRoom}
+                        loading={chatRoomsLoading}
+                        searchQuery={searchQuery}
+                        setSearchQuery={setSearchQuery}
+                      />
+                    </div>
                   </div>
                 </motion.div>
               )}
@@ -394,6 +414,7 @@ export const EchoTalk: React.FC = () => {
               animate={{ opacity: 1, x: 0 }}
               className="hidden lg:flex lg:w-80 lg:flex-shrink-0"
             >
+              {/* Full height container with proper overflow */}
               <div className="w-full h-full">
                 <SidebarContent
                   view={view}

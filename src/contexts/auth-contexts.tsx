@@ -81,8 +81,8 @@ async function createOrUpdateUserDocument(
       } = {
         uid: user.uid,
         email: user.email || '',
-        displayName: user.displayName || null,
-        userImg: user.photoURL || null,
+        displayName: user.displayName,
+        userImg: user.photoURL || undefined,
         role: 'user' as const,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -110,8 +110,8 @@ async function createOrUpdateUserDocument(
         updatedAt: ReturnType<typeof serverTimestamp>;
       } = {
         email: user.email || '',
-        displayName: user.displayName || null,
-        userImg: user.photoURL || null,
+        displayName: user.displayName || undefined,
+        userImg: user.photoURL || undefined,
         updatedAt: serverTimestamp(),
         ...additionalData
       };
@@ -356,7 +356,7 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
       console.log('📄 Creating Firestore user document...');
       try {
         await createOrUpdateUserDocument(userCredential.user, {
-          displayName: displayName?.trim() || null
+          displayName: displayName?.trim() || undefined
         });
         console.log('✅ Firestore document creation completed');
       } catch (firestoreError) {

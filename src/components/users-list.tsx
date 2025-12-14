@@ -3,7 +3,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MessageCircle, Users, Clock } from 'lucide-react';
 
 // ============================================
-// TYPE DEFINITIONS
+// TYPE IMPORTS - Import ALL types from central location
+// ============================================
+
+/**
+ * IMPORTANT: All types are imported from the central types file
+ * DO NOT define types locally in this file
+ */
+
+// Import types from central types file
+import type { UserDocument, ChatRoomDocument } from '../types';
+
+// ============================================
+// LOCAL TYPE DEFINITIONS (Component-specific only)
 // ============================================
 
 /**
@@ -18,21 +30,9 @@ interface FirestoreTimestamp {
 }
 
 /**
- * User document from Firestore
- * Represents a user in the chat application
+ * Message structure in chat room (simplified for this component)
  */
-export interface UserDocument {
-  uid: string;              // Unique user identifier
-  displayName: string;      // User's display name
-  userImg?: string;         // Optional profile image URL
-  email?: string;           // User's email
-  createdAt?: FirestoreTimestamp;
-}
-
-/**
- * Message structure in chat room
- */
-interface Message {
+interface LastMessage {
   text: string;
   senderId: string;
   timestamp: FirestoreTimestamp;
@@ -40,51 +40,34 @@ interface Message {
 }
 
 /**
- * Chat room document from Firestore
- * Represents a conversation between users
- */
-export interface ChatRoomDocument {
-  id: string;                    // Chat room unique identifier
-  participants: string[];        // Array of user IDs in the chat
-  lastMessage?: string | Message; // Last message (can be string or object)
-  lastMessageTime?: FirestoreTimestamp | string | null;
-  unreadCount?: Record<string, number>; // Object mapping userId to unread count
-  createdAt?: FirestoreTimestamp;
-}
-
-/**
- * Enhanced chat room with additional computed properties
- * Used internally to display chat list with user information
- * 
- * NOTE: We use Omit to remove 'unreadCount' from ChatRoomDocument
- * and redefine it as a number for the current user
+ * Enhanced chat room with computed user information
+ * Used internally after processing raw chat room data
  */
 interface ChatRoomWithUser extends Omit<ChatRoomDocument, 'unreadCount'> {
-  otherUser: UserDocument;   // The other user in the conversation (required after filtering)
-  unreadCount: number;       // Normalized unread count for current user (not a Record)
+  otherUser: UserDocument;
+  unreadCount: number;
 }
 
 /**
  * Props for the UsersList component
  */
-export interface UsersListProps {
-  users: UserDocument[];           // All available users
-  chatRooms: ChatRoomDocument[];   // All chat rooms
-  currentUserId: string;           // Current logged-in user ID
-  view: 'chats' | 'users';        // Current view mode
-  selectedUserId?: string;         // Currently selected user ID
-  onSelectUser: (user: UserDocument) => void;  // Callback when user selected
-  onSelectChatRoom: (roomId: string, otherUser: UserDocument) => void; // Callback when chat selected
-  loading: boolean;                // Loading state
+interface UsersListProps {
+  users: UserDocument[];
+  chatRooms: ChatRoomDocument[];
+  currentUserId: string;
+  view: 'chats' | 'users';
+  selectedUserId?: string;
+  onSelectUser: (user: UserDocument) => void;
+  onSelectChatRoom: (roomId: string, otherUser: UserDocument) => void;
+  loading: boolean;
 }
 
 // ============================================
-// PLACEHOLDER PRESENCE INDICATOR
+// PRESENCE INDICATOR COMPONENT
 // ============================================
 
 /**
- * Placeholder PresenceIndicator component
- * Replace this with your actual implementation
+ * Props for PresenceIndicator component
  */
 interface PresenceIndicatorProps {
   userId: string;
@@ -92,40 +75,48 @@ interface PresenceIndicatorProps {
   size: 'sm' | 'md';
 }
 
+/**
+ * PresenceIndicator component - shows online/offline status
+ * 
+ * IMPLEMENTATION OPTIONS:
+ * 
+ * 1. Simple Mock (current): Uses userId hash for consistent results
+ * 2. Firebase Realtime: Use Firebase Realtime Database presence
+ * 3. Firestore: Store status in user document
+ * 4. Custom Hook: Create usePresence(userId) hook
+ */
 const PresenceIndicator: React.FC<PresenceIndicatorProps> = ({ userId, showText, size }) => {
-  // Mock online status - replace with real presence logic
-  const isOnline = Math.random() > 0.5;
+  // Mock online status using userId hash (deterministic, not random)
+  // This ensures consistent results across renders
+  const isOnline = React.useMemo(() => {
+    // Simple hash: sum of character codes
+    const hash = userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return hash % 2 === 0; // Even hash = online, odd = offline
+  }, [userId]);
+  
+  // Alternative: Always show as online for demo
+  // const isOnline = true;
+  
+  // TODO: Replace with real presence logic
+  // const isOnline = usePresence(userId);
+  
+  const dotSize = size === 'sm' ? 'w-2 h-2' : 'w-3 h-3';
+  const textSize = size === 'sm' ? 'text-xs' : 'text-sm';
+  const bgColor = isOnline ? 'bg-green-500' : 'bg-gray-400';
+  const statusText = isOnline ? 'Online' : 'Offline';
   
   return (
     <div className="flex items-center gap-1">
-      <div className={`rounded-full ${size === 'sm' ? 'w-2 h-2' : 'w-3 h-3'} ${
-        isOnline ? 'bg-green-500' : 'bg-gray-400'
-      }`} />
+      <div className={`rounded-full ${dotSize} ${bgColor}`} />
       {showText && (
-        <span className={`${size === 'sm' ? 'text-xs' : 'text-sm'} text-gray-600 dark:text-gray-400`}>
-          {isOnline ? 'Online' : 'Offline'}
+        <span className={`${textSize} text-gray-600 dark:text-gray-400`}>
+          {statusText}
         </span>
       )}
     </div>
   );
 };
 
-// ============================================
-// UTILITY FUNCTIONS
-// ============================================
-
-/**
- * Converts various timestamp formats to milliseconds
- * Handles Firestore Timestamps, serialized timestamps, and date strings
- * 
- * @param timestamp - The timestamp to convert
- * @returns Number of milliseconds since epoch, or 0 if invalid
- * 
- * @example
- * getTimeInMillis(firestoreTimestamp) // 1234567890000
- * getTimeInMillis({ _seconds: 1234567890 }) // 1234567890000
- * getTimeInMillis("2024-01-01") // 1704067200000
- */
 const getTimeInMillis = (timestamp: FirestoreTimestamp | string | null | undefined): number => {
   if (!timestamp) return 0;
   
@@ -137,11 +128,16 @@ const getTimeInMillis = (timestamp: FirestoreTimestamp | string | null | undefin
   
   // Handle Firestore Timestamp with toMillis method
   if ('toMillis' in timestamp && typeof timestamp.toMillis === 'function') {
-    return timestamp.toMillis();
+    try {
+      return timestamp.toMillis();
+    } catch (error) {
+      console.warn('Error calling toMillis:', error);
+      return 0;
+    }
   }
   
   // Handle serialized Firestore Timestamp with _seconds
-  if ('_seconds' in timestamp && timestamp._seconds) {
+  if ('_seconds' in timestamp && typeof timestamp._seconds === 'number') {
     return timestamp._seconds * 1000;
   }
   
@@ -149,7 +145,7 @@ const getTimeInMillis = (timestamp: FirestoreTimestamp | string | null | undefin
 };
 
 /**
- * Converts timestamp to Date object
+ * Converts timestamp to Date object with null safety
  * 
  * @param timestamp - The timestamp to convert
  * @returns Date object or null if invalid
@@ -170,7 +166,7 @@ const toDate = (timestamp: FirestoreTimestamp | string | null | undefined): Date
     }
     
     // Handle serialized timestamp with _seconds
-    if ('_seconds' in timestamp && timestamp._seconds) {
+    if ('_seconds' in timestamp && typeof timestamp._seconds === 'number') {
       return new Date(timestamp._seconds * 1000);
     }
     
@@ -203,7 +199,11 @@ const formatLastMessageTime = (timestamp: FirestoreTimestamp | string | null | u
     
     if (isToday) {
       // Return time for today
-      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+      return date.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        hour12: false 
+      });
     }
     
     // Return relative time for other dates
@@ -225,29 +225,29 @@ const formatLastMessageTime = (timestamp: FirestoreTimestamp | string | null | u
 };
 
 /**
- * Safely extracts text from a message object or string
- * Handles both string messages and message objects with text property
+ * Extracts and truncates message text from various message formats
  * 
- * @param lastMessage - The message to extract text from
- * @returns Formatted message text, truncated if necessary
+ * @param lastMessage - Can be string, Message object, or null/undefined
+ * @returns Truncated message text for display (max 40 chars)
  * 
  * @example
- * getLastMessageText("Hello") // "Hello"
+ * getLastMessageText("Hello world") // "Hello world"
  * getLastMessageText({ text: "Very long message..." }) // "Very long message... (truncated)"
  * getLastMessageText(null) // "No messages yet"
  */
-const getLastMessageText = (lastMessage: string | Message | null | undefined): string => {
+const getLastMessageText = (lastMessage: string | LastMessage | null | undefined): string => {
+  const MAX_LENGTH = 40;
+  const TRUNCATE_SUFFIX = '...';
+  
   if (!lastMessage) return 'No messages yet';
   
-  // Handle string message
   if (typeof lastMessage === 'string') {
-    return lastMessage.length > 40 ? lastMessage.substring(0, 40) + '...' : lastMessage;
+    return lastMessage.length > MAX_LENGTH ? lastMessage.substring(0, MAX_LENGTH) + TRUNCATE_SUFFIX : lastMessage;
   }
   
-  // Handle message object
   if (typeof lastMessage === 'object' && 'text' in lastMessage && typeof lastMessage.text === 'string') {
     const text = lastMessage.text;
-    return text.length > 40 ? text.substring(0, 40) + '...' : text;
+    return text.length > MAX_LENGTH ? text.substring(0, MAX_LENGTH) + TRUNCATE_SUFFIX : text;
   }
   
   return 'Tap to start chatting';
@@ -260,29 +260,16 @@ const getLastMessageText = (lastMessage: string | Message | null | undefined): s
 /**
  * UsersList Component
  * 
- * Displays a list of either chat conversations or available users
- * depending on the view prop. Handles two main modes:
- * 
- * 1. 'chats' view: Shows active conversations sorted by recent activity
- * 2. 'users' view: Shows available users to start new conversations
+ * Displays a list of either:
+ * 1. Active chat conversations (view='chats')
+ * 2. Available users to start new chats (view='users')
  * 
  * Features:
  * - Real-time presence indicators
  * - Unread message counts
+ * - Last message preview
  * - Smooth animations
- * - Dark mode support
- * - Responsive design
- * 
- * @example
- * <UsersList
- *   users={allUsers}
- *   chatRooms={chatRooms}
- *   currentUserId="user123"
- *   view="chats"
- *   onSelectUser={handleUserSelect}
- *   onSelectChatRoom={handleChatSelect}
- *   loading={false}
- * />
+ * - Responsive design with dark mode support
  */
 export const UsersList: React.FC<UsersListProps> = ({
   users,
@@ -297,40 +284,54 @@ export const UsersList: React.FC<UsersListProps> = ({
   /**
    * MEMO 1: Enhance chat rooms with user information
    * 
-   * For each chat room:
+   * Process each chat room to:
    * 1. Find the other participant (not the current user)
    * 2. Get that user's full information
    * 3. Extract unread count for current user
    * 4. Filter out rooms where we can't find the other user
    * 
-   * This memoized value recalculates only when dependencies change
+   * Dependencies: [chatRooms, users, currentUserId]
+   * Recalculates only when these change
    */
   const chatRoomsWithUsers = useMemo<ChatRoomWithUser[]>(() => {
     return chatRooms
-      .map(room => {
+      .map((room): ChatRoomWithUser | null => {
         // Find the other user in this chat (not current user)
-        const otherUserId = room.participants.find(participantId => participantId !== currentUserId);
+        const otherUserId = room.participants.find(
+          (participantId: string) => participantId !== currentUserId
+        );
+        
+        // If no other user found, skip this room
+        if (!otherUserId) {
+          console.warn(`Chat room ${room.id} has no other participant`);
+          return null;
+        }
         
         // Get full user object for the other participant
-        const otherUser = users.find(u => u.uid === otherUserId);
+        const otherUser = users.find((u: UserDocument) => u.uid === otherUserId);
         
         // If we can't find the other user, return null
-        if (!otherUser) return null;
+        if (!otherUser) {
+          console.warn(`User ${otherUserId} not found in users list`);
+          return null;
+        }
         
         // Extract unread count for current user (default to 0)
-        const unreadCountForUser = room.unreadCount?.[currentUserId] || 0;
+        const unreadCountForUser: number = room.unreadCount?.[currentUserId] ?? 0;
         
         // Create the enhanced room object
         // We destructure to remove the original unreadCount and add our normalized one
-        const { unreadCount: _, ...restOfRoom } = room;
+        const { unreadCount: _originalUnreadCount, ...restOfRoom } = room;
+        console.log(_originalUnreadCount);
         
         return {
           ...restOfRoom,
           otherUser,
           unreadCount: unreadCountForUser,
-        } as ChatRoomWithUser;
+        };
       })
       // Filter out null values (rooms where we couldn't find the other user)
+      // Type guard ensures TypeScript knows remaining items are ChatRoomWithUser
       .filter((room): room is ChatRoomWithUser => room !== null);
   }, [chatRooms, users, currentUserId]);
 
@@ -340,8 +341,10 @@ export const UsersList: React.FC<UsersListProps> = ({
    * Sorts chat rooms in descending order by lastMessageTime
    * (most recent first). This ensures the most active chats
    * appear at the top of the list.
+   * 
+   * Dependencies: [chatRoomsWithUsers]
    */
-  const sortedChatRooms = useMemo(() => {
+  const sortedChatRooms = useMemo<ChatRoomWithUser[]>(() => {
     return [...chatRoomsWithUsers].sort((a, b) => {
       const timeA = getTimeInMillis(a.lastMessageTime);
       const timeB = getTimeInMillis(b.lastMessageTime);
@@ -355,15 +358,17 @@ export const UsersList: React.FC<UsersListProps> = ({
    * Creates a list of users who are NOT currently in any
    * chat room with the current user. These are potential
    * new conversation starters.
+   * 
+   * Dependencies: [users, chatRooms, currentUserId]
    */
-  const usersWithoutChats = useMemo(() => {
+  const usersWithoutChats = useMemo<UserDocument[]>(() => {
     // Create a Set of all user IDs that are in chat rooms
-    const chatUserIds = new Set(
-      chatRooms.flatMap(room => room.participants)
+    const chatUserIds = new Set<string>(
+      chatRooms.flatMap((room: ChatRoomDocument) => room.participants)
     );
     
     // Filter users who are NOT in this Set
-    return users.filter(user => 
+    return users.filter((user: UserDocument) => 
       user.uid !== currentUserId && // Exclude current user
       !chatUserIds.has(user.uid)    // Exclude users in chats
     );
@@ -442,7 +447,8 @@ export const UsersList: React.FC<UsersListProps> = ({
         {/* Chat list */}
         <div className="flex-1 overflow-y-auto">
           <AnimatePresence>
-            {sortedChatRooms.map(({ id, otherUser, lastMessage, lastMessageTime, unreadCount }) => {
+            {sortedChatRooms.map((chatRoom: ChatRoomWithUser) => {
+              const { id, otherUser, lastMessage, lastMessageTime, unreadCount } = chatRoom;
               const isSelected = selectedUserId === otherUser.uid;
               const lastMessageText = getLastMessageText(lastMessage);
               const formattedTime = formatLastMessageTime(lastMessageTime);
@@ -530,7 +536,9 @@ export const UsersList: React.FC<UsersListProps> = ({
   // ============================================
   
   // Show users without chats, or all users if none available
-  const displayUsers = usersWithoutChats.length > 0 ? usersWithoutChats : users.filter(u => u.uid !== currentUserId);
+  const displayUsers: UserDocument[] = usersWithoutChats.length > 0 
+    ? usersWithoutChats 
+    : users.filter((u: UserDocument) => u.uid !== currentUserId);
 
   // Empty state for users view
   if (displayUsers.length === 0) {
@@ -573,7 +581,7 @@ export const UsersList: React.FC<UsersListProps> = ({
       {/* User list */}
       <div className="flex-1 overflow-y-auto">
         <AnimatePresence>
-          {displayUsers.map((user) => {
+          {displayUsers.map((user: UserDocument) => {
             const isSelected = selectedUserId === user.uid;
 
             return (

@@ -1,6 +1,5 @@
 import React, { useState, type FormEvent, type ChangeEvent } from 'react';
 import { useAuth } from '../contexts/auth-contexts';
-import { Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserPlus, User, Mail, Lock, Eye, EyeOff, CheckCircle, MessageCircle } from 'lucide-react';
 
@@ -38,11 +37,8 @@ export function Signup() {
     special: false
   });
   
-  const { signUp, user, error, clearError } = useAuth();
+  const { signUp, error, clearError } = useAuth();
 
-  if (user) {
-    return <Navigate to="/chat-hub" replace />;
-  }
 
   const validateForm = (): boolean => {
     const errors: FormErrors = {};

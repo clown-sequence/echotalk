@@ -31,7 +31,7 @@ export function Authentication() {
       y: 0,
       scale: 1,
       transition: {
-        type: "spring" as const, // Use const assertion
+        type: "spring" as const,
         stiffness: 100,
         damping: 15
       }
@@ -59,8 +59,12 @@ export function Authentication() {
       transition: { delay: 0.2 }
     }
   };
-  const { user } = useAuth()
-  if (user) return <Navigate to={'chat-hub'} />
+  
+  const { user } = useAuth();
+  
+  // ✅ FIX: Add leading slash for absolute path
+  if (user) return <Navigate to="/chat-hub" replace />;
+  
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black flex items-center justify-center p-4">
       <motion.div

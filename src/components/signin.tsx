@@ -36,7 +36,7 @@ export function Signin({
 
   // If user is already logged in, redirect
   if (user) {
-    return <Navigate to="/chat" replace />;
+    return <Navigate to="/chat-hub" replace />;
   }
 
   // Validate form before submission
