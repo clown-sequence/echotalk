@@ -2,7 +2,7 @@
 // components/DeviceTest.tsx - Test Camera & Microphone
 // ============================================
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Video, Mic, X, Check, AlertCircle } from 'lucide-react';
 
 interface DeviceInfo {
@@ -316,7 +316,7 @@ export const DeviceTest: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     No devices found
                   </div>
                 ) : (
-                  result.devices.map((device, index) => (
+                  result.devices.map((device) => (
                     <div key={device.deviceId} className="p-4 flex items-center gap-3">
                       {device.kind === 'videoinput' ? (
                         <Video className="w-5 h-5 text-black dark:text-white" />
@@ -368,7 +368,7 @@ export const DeviceTest: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 <span className="font-semibold">Secure Context:</span> {window.isSecureContext ? 'Yes (HTTPS)' : 'No (HTTP)'}
               </p>
               <p className="text-sm text-black dark:text-white">
-                <span className="font-semibold">MediaDevices API:</span> {!!navigator.mediaDevices ? 'Available' : 'Not Available'}
+                <span className="font-semibold">MediaDevices API:</span> {navigator.mediaDevices ? 'Available' : 'Not Available'}
               </p>
             </div>
 

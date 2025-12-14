@@ -1,7 +1,7 @@
 // ============================================
 // hooks/use-presence.ts
 // Enhanced version with improved error handling,
-// retry logic, and better TypeScript types
+// retry logic, and proper TypeScript types
 // ============================================
 
 import { useEffect, useRef, useCallback } from 'react';
@@ -19,7 +19,7 @@ import {
   set, 
   onValue,
   type DatabaseReference,
-  DataSnapshot 
+  type DataSnapshot 
 } from 'firebase/database';
 
 // ============================================
@@ -129,7 +129,7 @@ export const usePresence = ({
   
   const db = getFirestore();
   const rtdb = getDatabase();
-  const activityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const activityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSettingUpRef = useRef(false);
   const unsubscribeConnectionRef = useRef<(() => void) | null>(null);
   const lastActivityUpdateRef = useRef<number>(0);
@@ -141,7 +141,7 @@ export const usePresence = ({
   /**
    * Debug logger
    */
-  const log = useCallback((...args: any[]) => {
+  const log = useCallback((...args: unknown[]) => {
     if (debug) {
       console.log('[Presence]', ...args);
     }
@@ -150,7 +150,7 @@ export const usePresence = ({
   /**
    * Error logger
    */
-  const logError = useCallback((...args: any[]) => {
+  const logError = useCallback((...args: unknown[]) => {
     console.error('[Presence Error]', ...args);
   }, []);
   
@@ -333,7 +333,7 @@ export const usePresence = ({
           .then(() => {
             log('Disconnect handler configured successfully');
           })
-          .catch((error) => {
+          .catch((error: Error) => {
             logError('Failed to set disconnect handler:', error);
           });
       } else {
@@ -384,7 +384,7 @@ export const usePresence = ({
       // Note: This might not complete before page unload
       setOffline();
     }
-  }, [userId, db, collectionPath, setOffline, log]);
+  }, [userId, setOffline, log]);
   
   // ============================================
   // Main Effect
@@ -469,15 +469,4 @@ export const usePresence = ({
     setOffline,
     updateActivity
   };
-};
-
-// ============================================
-// Export types for external use
-// ============================================
-
-export type { 
-  UsePresenceOptions, 
-  UsePresenceReturn,
-  FirestorePresence,
-  RTDBPresence 
 };

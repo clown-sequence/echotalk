@@ -8,7 +8,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-
 /**
  * Convert Firebase auth error to user-friendly message
  */
@@ -142,13 +141,16 @@ export const formatExactTimestamp = (timestamp: Timestamp | null | undefined): s
   }
 };
 
-
+/**
+ * Converts a Firebase User to UserDocument
+ */
 export const userToUserDocument = (user: User): UserDocument => {
   return {
     uid: user.uid,
-    displayName: user.displayName || 'Unknown User',
+    displayName: user.displayName || user.email?.split('@')[0] || 'User',
     email: user.email || '',
     userImg: user.photoURL || undefined,
+    role: 'user',
   };
 };
 

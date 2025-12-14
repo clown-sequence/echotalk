@@ -1,4 +1,4 @@
-import React, { useState, type FormEvent, type ChangeEvent } from 'react';
+import { useState, type FormEvent, type ChangeEvent } from 'react';
 import { useAuth } from '../contexts/auth-contexts';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserPlus, User, Mail, Lock, Eye, EyeOff, CheckCircle, MessageCircle } from 'lucide-react';

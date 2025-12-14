@@ -19,7 +19,8 @@ import {
   updateDoc,
   serverTimestamp,
   type DocumentReference,
-  type DocumentSnapshot
+  type DocumentSnapshot,
+  type FieldValue
 } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import type { 
@@ -63,7 +64,6 @@ async function createOrUpdateUserDocument(
   console.log('📝 Starting createOrUpdateUserDocument for:', user.uid);
   console.log('📝 User email:', user.email);
   console.log('📝 Additional data:', additionalData);
-  console.log('📝 Additional data:', user);
 
   const userRef: DocumentReference = doc(db, 'users', user.uid);
   
@@ -75,17 +75,14 @@ async function createOrUpdateUserDocument(
       console.log('✨ User document does NOT exist, creating new one...');
       
       // Create new user document with server timestamps
-      const userData: Omit<UserDocument, 'createdAt' | 'updatedAt'> & {
-        createdAt: ReturnType<typeof serverTimestamp>;
-        updatedAt: ReturnType<typeof serverTimestamp>;
-      } = {
+      const userData = {
         uid: user.uid,
         email: user.email || '',
-        displayName: user.displayName,
+        displayName: user.displayName || user.email?.split('@')[0] || 'User',
         userImg: user.photoURL || undefined,
         role: 'user' as const,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp() as FieldValue,
+        updatedAt: serverTimestamp() as FieldValue,
         ...additionalData
       };
       
@@ -106,13 +103,11 @@ async function createOrUpdateUserDocument(
       console.log('📝 User document exists, updating...');
       
       // Update existing user document
-      const updateData: Partial<Omit<UserDocument, 'createdAt'>> & {
-        updatedAt: ReturnType<typeof serverTimestamp>;
-      } = {
+      const updateData = {
         email: user.email || '',
         displayName: user.displayName || undefined,
         userImg: user.photoURL || undefined,
-        updatedAt: serverTimestamp(),
+        updatedAt: serverTimestamp() as FieldValue,
         ...additionalData
       };
       
@@ -139,16 +134,6 @@ async function createOrUpdateUserDocument(
     // Handle permission errors
     if (err?.code === 'permission-denied') {
       console.error('❌ PERMISSION DENIED: Check your Firestore security rules!');
-      console.error('Make sure you have rules like:');
-      console.error(`
-      rules_version = '2';
-      service cloud.firestore {
-        match /databases/{database}/documents {
-          match /users/{userId} {
-            allow read, write: if request.auth != null && request.auth.uid == userId;
-          }
-        }
-      }`);
     }
     
     throw error;
@@ -193,9 +178,9 @@ async function updateUserDocumentInFirestore(
   try {
     console.log('📝 Updating user document:', uid);
     const userRef: DocumentReference = doc(db, 'users', uid);
-    const updateData: typeof data & { updatedAt: ReturnType<typeof serverTimestamp> } = {
+    const updateData = {
       ...data,
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp() as FieldValue
     };
     await updateDoc(userRef, updateData);
     console.log('✅ User document updated in Firestore:', uid);
