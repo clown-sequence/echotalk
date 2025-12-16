@@ -265,7 +265,7 @@ export const UsersList: React.FC<UsersListProps> = ({
             className="mb-6"
           >
             <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/20 dark:to-purple-900/20">
-              <MessageCircle className="w-16 h-16 text-blue-600 dark:text-blue-400" />
+              <MessageCircle className="w-10 h-10 text-blue-600 dark:text-blue-400" />
             </div>
           </motion.div>
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">

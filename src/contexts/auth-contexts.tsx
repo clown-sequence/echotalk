@@ -38,13 +38,13 @@ import {
   isValidPassword 
 } from '../lib/utils';
 
-
 interface AuthProviderProps {
   children: ReactNode;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// ✅ FIXED: Automatic sync function (runs on auth events)
 async function createOrUpdateUserDocument(
   user: User,
   additionalData?: Partial<Omit<UserDocument, 'createdAt' | 'updatedAt'>>
@@ -61,12 +61,13 @@ async function createOrUpdateUserDocument(
     const userSnapshot: DocumentSnapshot = await getDoc(userRef);
     
     if (!userSnapshot.exists()) {
-      // Create new user document with server timestamps
+      // ✅ CREATE: New user document
+      console.log('📝 Creating new user document...');
       const userData = {
         uid: user.uid,
         email: user.email || '',
         displayName: user.displayName || user.email?.split('@')[0] || 'User',
-        userImg: user.photoURL || null,
+        userImg: user.photoURL || null,  // ✅ FIX: null instead of undefined
         role: 'user' as const,
         createdAt: serverTimestamp() as FieldValue,
         updatedAt: serverTimestamp() as FieldValue,
@@ -74,16 +75,45 @@ async function createOrUpdateUserDocument(
       };
       
       await setDoc(userRef, userData);
-      
-      const updateData = {
-        email: user.email || '',
-        displayName: user.displayName || undefined,
-        userImg: user.photoURL || undefined,
+      console.log('✅ New user document created successfully');
+    } else {
+      // ✅ UPDATE: Only update if there are actual changes
+      console.log('📝 Updating existing user document...');
+      const existingData = userSnapshot.data();
+      const updateData: any = {
         updatedAt: serverTimestamp() as FieldValue,
-        ...additionalData
       };
       
-      await setDoc(userRef, updateData, { merge: true });
+      // Only update fields that exist and have changed
+      if (user.email && user.email !== existingData?.email) {
+        updateData.email = user.email;
+      }
+      
+      if (user.displayName && user.displayName !== existingData?.displayName) {
+        updateData.displayName = user.displayName;
+      }
+      
+      if (user.photoURL !== undefined && user.photoURL !== existingData?.userImg) {
+        updateData.userImg = user.photoURL || null;
+      }
+      
+      // Merge in additional data (only non-undefined values)
+      if (additionalData) {
+        Object.keys(additionalData).forEach(key => {
+          const value = additionalData[key as keyof typeof additionalData];
+          if (value !== undefined) {
+            updateData[key] = value;
+          }
+        });
+      }
+      
+      // Only update if there's something to update (more than just updatedAt)
+      if (Object.keys(updateData).length > 1) {
+        await setDoc(userRef, updateData, { merge: true });
+        console.log('✅ User document updated successfully');
+      } else {
+        console.log('ℹ️ No changes detected, skipping update');
+      }
     }
   } catch (error: unknown) {
     const err = error as { code?: string; message?: string; name?: string };
@@ -93,12 +123,12 @@ async function createOrUpdateUserDocument(
       return;
     }
     
-    // Handle permission errors
     if (err?.code === 'permission-denied') {
       console.error('❌ PERMISSION DENIED: Check your Firestore security rules!');
     }
     
-    throw error;
+    console.error('❌ Error in createOrUpdateUserDocument:', error);
+    // Don't throw - allow auth to continue
   }
 }
 
@@ -132,6 +162,7 @@ async function updateUserDocumentInFirestore(
       updatedAt: serverTimestamp() as FieldValue
     };
     await updateDoc(userRef, updateData);
+    console.log('✅ User document updated in Firestore');
   } catch (error: unknown) {
     console.error('❌ Error updating user document:', error);
     throw error;
@@ -184,6 +215,7 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
             await createOrUpdateUserDocument(currentUser);
           } catch (err: unknown) {
             console.error('❌ Failed to sync user document:', err);
+            // Don't block auth flow on sync failure
           }
         }
         
@@ -210,6 +242,7 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
       unsubscribe();
     };
   }, []);
+
   const signUp = async (
     credentials: SignUpCredentials
   ): Promise<UserCredential> => {
@@ -218,8 +251,6 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
     try {
       setError(null);
       console.log('📝 Starting sign up process...');
-      console.log('📝 Email:', email);
-      console.log('📝 Display name:', displayName);
       
       if (!email || !password) {
         const validationError: AuthErrorResponse = {
@@ -257,6 +288,7 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
         password
       );
       
+      // Update auth profile with display name
       if (displayName && userCredential.user) {
         console.log('📝 Updating auth profile with display name...');
         await updateProfile(userCredential.user, {
@@ -265,13 +297,15 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
         await userCredential.user.reload();
       }
       
+      // Create Firestore document
       try {
         await createOrUpdateUserDocument(userCredential.user, {
           displayName: displayName?.trim() || undefined
         });
-        console.log('✅ Firestore document creation completed');
+        console.log('✅ User signup completed successfully');
       } catch (firestoreError) {
-        console.error('❌ CRITICAL: Failed to create Firestore document:', firestoreError);
+        console.error('❌ Failed to create Firestore document:', firestoreError);
+        // Don't fail the signup if Firestore fails
       }
       
       return userCredential;
@@ -323,19 +357,20 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
         email.trim(), 
         password
       );
+      
+      // Update Firestore on sign in
       try {
         await createOrUpdateUserDocument(userCredential.user);
       } catch (firestoreError) {
-        console.warn('⚠️ Could not update Firestore on sign in, will retry:', firestoreError);
+        console.warn('⚠️ Could not update Firestore on sign in:', firestoreError);
       }
       
+      console.log('✅ Sign in successful');
       return userCredential;
       
     } catch (err: unknown) {
       const authError = err as AuthError;
       const errorResponse: AuthErrorResponse = getAuthErrorMessage(authError);
-      
-      console.error('❌ Sign in error:', errorResponse);
       
       if (authError.code === 'auth/user-not-found') {
         errorResponse.message = 'No account found with this email address. Please sign up first.';
@@ -351,6 +386,8 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
       setLoading(false);
     }
   };
+
+  // ✅ FIXED: User-initiated profile update with proper null handling
   const updateUserProfile = async (data: UpdateProfileData): Promise<void> => {
     try {
       setError(null);
@@ -360,19 +397,29 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
       }
 
       setLoading(true);
+      console.log('📝 Updating user profile...');
 
-      const updateData: { displayName?: string; photoURL?: string } = {};
+      // Update Firebase Auth profile
+      // ✅ FIX: Explicitly type with null support to match Firebase's expected types
+      const authUpdateData: { 
+        displayName?: string | null; 
+        photoURL?: string | null;
+      } = {};
+      
       if (data.displayName !== undefined) {
-        updateData.displayName = data.displayName;
+        authUpdateData.displayName = data.displayName || null;
       }
       if (data.userImg !== undefined) {
-        updateData.photoURL = data.userImg;
+        authUpdateData.photoURL = data.userImg || null;
       }
 
-      if (Object.keys(updateData).length > 0) {
-        await updateProfile(user, updateData);
+      if (Object.keys(authUpdateData).length > 0) {
+        await updateProfile(user, authUpdateData);
+        await user.reload();
+        console.log('✅ Firebase Auth profile updated');
       }
 
+      // Update Firestore document
       const firestoreData: Partial<Omit<UserDocument, 'uid' | 'createdAt' | 'updatedAt'>> = {};
       if (data.displayName !== undefined) {
         firestoreData.displayName = data.displayName;
@@ -383,6 +430,7 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
 
       if (Object.keys(firestoreData).length > 0) {
         await updateUserDocumentInFirestore(user.uid, firestoreData);
+        console.log('✅ Firestore document updated');
       }
 
       console.log('✅ Profile updated successfully');
@@ -399,6 +447,7 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
       setLoading(false);
     }
   };
+
   const updateUserPassword = async (data: UpdatePasswordData): Promise<void> => {
     try {
       setError(null);
@@ -476,11 +525,13 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
   const clearError = (): void => {
     setError(null);
   };
+
   const isAuthenticated: boolean = !!user;
 
   const getUserId = (): string | null => {
     return user?.uid || null;
   };
+
   const getUserEmail = (): string | null => {
     return user?.email || null;
   };

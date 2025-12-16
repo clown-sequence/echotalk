@@ -116,7 +116,7 @@ export function Authentication() {
           <div className="flex relative">
             {/* Background Slider */}
             <motion.div
-              className="absolute top-1 left-1 w-1/2 h-[calc(100%-0.5rem)] bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl"
+              className="absolute top-0 left-0 w-1/2 h-[calc(100%-0.0rem)] bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl"
               variants={toggleVariants}
               animate={isSignIn ? "right" : "left"}
               transition={{ type: "spring", stiffness: 300, damping: 25 }}
@@ -219,7 +219,7 @@ export function Authentication() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
             >
-              <div className="text-center">
+              <div className="text-center flex items-center justify-center">
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   {isSignIn ? "Don't have an account?" : "Already have an account?"}
                   <button
@@ -232,7 +232,7 @@ export function Authentication() {
                       transition={{ duration: 1.5, repeat: Infinity }}
                       className="inline-block"
                     >
-                      <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                      <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                     </motion.span>
                   </button>
                 </p>

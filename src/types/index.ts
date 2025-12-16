@@ -29,17 +29,22 @@ export interface UserDocument {
   displayName: string;      // User's display name (required)
   email?: string;           // User's email address (optional - some auth providers don't provide it)
   role: 'user' | 'admin';
-  userImg?: string;         // Profile image URL (optional)
+  userImg?: string | null;         // Profile image URL (optional)
   status?: 'online' | 'offline' | 'away';  // Current presence status
   createdAt?: Timestamp;    // Account creation timestamp
   updatedAt?: Timestamp;    // Last profile update timestamp
   lastSeen?: Timestamp;     // Last activity timestamp
 }
+export interface UpdateProfileData {
+  displayName?: string;
+  userImg?: string | null;
+}
 
-/**
- * User presence information
- * Used for real-time status tracking
- */
+export interface UpdatePasswordData {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
 export interface PresenceDocument {
   uid: string;
   status: 'online' | 'offline' | 'away';
@@ -221,10 +226,32 @@ export interface CallDocumentExtended extends Omit<CallDocument, 'offer' | 'answ
   duration?: number;        // Call duration in seconds
 }
 
-/**
- * Call state in the application
- * Used by useVideoCall hook
- */
+export interface LocationData {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+  timestamp: number;
+  sharing: boolean;
+}
+export interface LocationData {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+  timestamp: number;
+  sharing: boolean;
+}
+
+export interface UserLocation extends LocationData {
+  userId: string;
+  userName: string;
+  userImg?: string;
+}
+
+export interface FriendData {
+  name: string;
+  img?: string;
+}
+
 export interface CallState {
   isInCall: boolean;
   callId: string | null;
@@ -279,14 +306,6 @@ export interface SignInCredentials {
  */
 export interface SignUpCredentials extends SignInCredentials {
   displayName?: string;
-}
-
-/**
- * Data for updating user profile
- */
-export interface UpdateProfileData {
-  displayName?: string;
-  userImg?: string;
 }
 
 /**

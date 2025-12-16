@@ -83,10 +83,6 @@ const getUserStatus = (user: User | UserDocument | null): string => {
   return 'online';
 };
 
-// ============================================
-// COMPONENT
-// ============================================
-
 export const SidebarContent: React.FC<SidebarContentProps> = ({
   view,
   setView,
@@ -184,7 +180,7 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
       </div>
 
       {/* Search Bar - Fixed height */}
-      <div className="flex-shrink-0 px-4 pb-4">
+      <div className="flex-shrink-0 px-4 pb-2">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           <input
@@ -192,7 +188,7 @@ export const SidebarContent: React.FC<SidebarContentProps> = ({
             placeholder={view === 'chats' ? 'Search conversations...' : 'Search users...'}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white 
+            className="w-full pl-10 pr-4 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white 
               placeholder-gray-500 dark:placeholder-gray-400 rounded-xl border border-gray-300 dark:border-gray-700
               focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-all"
           />

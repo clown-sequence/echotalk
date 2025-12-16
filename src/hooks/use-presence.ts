@@ -1,9 +1,3 @@
-// ============================================
-// hooks/use-presence.ts
-// Enhanced version with improved error handling,
-// retry logic, and proper TypeScript types
-// ============================================
-
 import { useEffect, useRef, useCallback } from 'react';
 import { 
   doc, 
@@ -21,6 +15,7 @@ import {
   type DatabaseReference,
   type DataSnapshot 
 } from 'firebase/database';
+import { getAuth } from 'firebase/auth';
 
 // ============================================
 // Type Definitions
@@ -97,11 +92,6 @@ export const usePresence = ({
   collectionPath = 'users',
   statusPath = 'status'
 }: UsePresenceOptions): UsePresenceReturn => {
-  
-  // ============================================
-  // Refs and State
-  // ============================================
-  
   const db = getFirestore();
   const rtdb = getDatabase();
   const activityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -109,13 +99,6 @@ export const usePresence = ({
   const unsubscribeConnectionRef = useRef<(() => void) | null>(null);
   const lastActivityUpdateRef = useRef<number>(0);
   
-  // ============================================
-  // Utility Functions
-  // ============================================
-  
-  /**
-   * Debug logger
-   */
   const log = useCallback((...args: unknown[]) => {
     if (debug) {
       console.log('[Presence]', ...args);
@@ -204,6 +187,15 @@ export const usePresence = ({
   const setOffline = useCallback(async (): Promise<void> => {
     if (!userId) return;
     
+    // CRITICAL: Check if user is still authenticated
+    const auth = getAuth();
+    const currentUser = auth.currentUser;
+    
+    if (!currentUser || currentUser.uid !== userId) {
+      log('Skipping setOffline - user not authenticated or UID mismatch');
+      return; // Don't try to write if not authenticated
+    }
+    
     log('Setting user offline:', userId);
     
     const userPresenceRef = doc(db, collectionPath, userId);
@@ -239,7 +231,7 @@ export const usePresence = ({
     
     log('User set to offline successfully');
   }, [userId, db, rtdb, collectionPath, statusPath, withRetry, log]);
-  
+
   /**
    * Update last activity timestamp (throttled)
    */

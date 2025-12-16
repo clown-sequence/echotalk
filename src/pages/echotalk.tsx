@@ -1,37 +1,50 @@
+
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, Users, Menu, MessageCircle, Video, Phone, Settings, Bell } from 'lucide-react';
+import { LogOut, Users, Menu, MessageCircle, MapIcon, Video, Phone, Settings, Bell } from 'lucide-react';
 import type { User as FirebaseAuthUser } from 'firebase/auth';
 import { useAuth } from '../contexts/auth-contexts';
 import { useUsers } from '../hooks/use-users';
 import { useChatRooms } from '../hooks/use-chat-rooms';
 import { useMessages } from '../hooks/use-message';
 import { usePresence } from '../hooks/use-presence';
+import { useLocationSharing } from '../hooks/use-location-sharing';
 import { MessagesList } from '../components/messages-list';
 import { MessageInput } from '../components/message-input';
 import { PresenceIndicator } from '../components/presence-indicator';
+import { SidebarContent } from './sidebar-content';
+import { ProfileSettings } from '../components/profile-settings';
+import { LocationMap } from '../components/location-map';
+import { LocationSharingPanel } from '../components/location-sharing-panel';
 import type { 
   UserDocument, 
   MessageDocument, 
   ChatRoomDocument,
+  FriendData,
 } from '../types';
-import { usersToUserDocuments } from '../lib/utils';
-import { SidebarContent } from './sidebar-content';
 import type { Timestamp } from 'firebase/firestore';
+import { usersToUserDocuments } from '../lib/utils';
+
+type ViewType = 'chats' | 'users';
+type DisplayViewType = 'chatDisplay' | 'mapDisplay' | 'settingsDisplay' | 'locationDisplay';
 
 export const EchoTalk: React.FC = () => {
   const { user, logout } = useAuth();
-  const [view, setView] = useState<'chats' | 'users'>('chats');
+  const [view, setView] = useState<ViewType>('chats');
+  const [displayView, setDisplayView] = useState<DisplayViewType>('chatDisplay');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [activeChatRoom, setActiveChatRoom] = useState<string | null>(null);
   const [selectedChatUser, setSelectedChatUser] = useState<UserDocument | null>(null);
   const [sending, setSending] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  // Presence hook
   usePresence({ 
     userId: user?.uid,
     enabled: !!user?.uid 
   });
+
+  // Users hook
   const { users: rawUsers } = useUsers({
     excludeUid: user?.uid,
     enableRealtime: true,
@@ -39,16 +52,19 @@ export const EchoTalk: React.FC = () => {
     currentUserId: user?.uid,
   });
 
+  // Convert users to proper type
   const users = useMemo<UserDocument[]>(() => {
     const firebaseUsers = rawUsers as unknown as FirebaseAuthUser[];
     return usersToUserDocuments(firebaseUsers);
   }, [rawUsers]);
 
+  // Chat rooms hook
   const { chatRooms, getOrCreateChatRoom, loading: chatRoomsLoading } = useChatRooms({
     currentUserId: user?.uid || '',
     enableRealtime: true,
   });
 
+  // Messages hook
   const { 
     messages, 
     sendMessage, 
@@ -58,12 +74,27 @@ export const EchoTalk: React.FC = () => {
     currentUserId: user?.uid || '',
   });
 
+  // Location sharing hook
+  const {
+    location,
+    sharing,
+    error: locationError,
+    friendLocations,
+    watchedUsers,
+    startSharing,
+    stopSharing,
+    watchFriendLocation,
+    unwatchFriendLocation,
+  } = useLocationSharing({
+    userId: user?.uid,
+    enabled: !!user?.uid,
+  });
+
   // Convert messages to MessageDocument format
   const convertedMessages = useMemo<MessageDocument[]>(() => {
     if (!messages || !Array.isArray(messages)) return [];
     
     return messages.map((msg): MessageDocument => {
-      // Handle timestamp field that might be named differently
       const timestamp = (msg as MessageDocument & { timestamp?: Timestamp }).timestamp || msg.createdAt;
       
       return {
@@ -77,12 +108,14 @@ export const EchoTalk: React.FC = () => {
     });
   }, [messages]);
 
+  // Calculate total unread messages
   const totalUnread = useMemo<number>(() => {
     return chatRooms.reduce((acc: number, room: ChatRoomDocument) => {
       return acc + (room.unreadCount?.[user?.uid || ''] || 0);
     }, 0);
   }, [chatRooms, user?.uid]);
 
+  // Handler functions with proper types
   const handleSelectUser = async (selectedUser: UserDocument): Promise<void> => {
     setSelectedChatUser(selectedUser);
     const existingRoom = chatRooms.find((room: ChatRoomDocument) => 
@@ -133,6 +166,15 @@ export const EchoTalk: React.FC = () => {
     }
   };
 
+  const handleWatchFriend = (userId: string, userData: FriendData): void => {
+    watchFriendLocation(userId, userData);
+  };
+
+  const handleUnwatchFriend = (userId: string): void => {
+    unwatchFriendLocation(userId);
+  };
+
+  // Filtered lists
   const filteredChatRooms = useMemo<ChatRoomDocument[]>(() => {
     if (!searchQuery) return chatRooms;
     return chatRooms.filter((room: ChatRoomDocument) => {
@@ -152,8 +194,8 @@ export const EchoTalk: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-black transition-colors duration-500">
-      
       <div className="min-h-screen">
+        {/* Header */}
         <motion.header
           initial={{ y: -100 }}
           animate={{ y: 0 }}
@@ -182,12 +224,29 @@ export const EchoTalk: React.FC = () => {
                   </h1>
                 </div>
               </div>
-              
+               
               <div className="flex items-center gap-3">
                 <button className="p-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
                   <Bell className="w-5 h-5" />
                 </button>
-                <button className="p-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
+                <button  
+                  onClick={() => setDisplayView('locationDisplay')}
+                  className={`p-2 rounded-xl border transition-all ${
+                    displayView === 'locationDisplay'
+                      ? 'bg-blue-500 text-white border-blue-500'
+                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <MapIcon className="w-5 h-5" />
+                </button>
+                <button  
+                  onClick={() => setDisplayView('settingsDisplay')}
+                  className={`p-2 rounded-xl border transition-all ${
+                    displayView === 'settingsDisplay'
+                      ? 'bg-blue-500 text-white border-blue-500'
+                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
                   <Settings className="w-5 h-5" />
                 </button>
                 <motion.button
@@ -215,9 +274,7 @@ export const EchoTalk: React.FC = () => {
                   exit={{ opacity: 0, x: -300 }}
                   className="fixed inset-y-0 left-0 z-40 w-80 lg:hidden"
                 >
-                  {/* Full height container */}
                   <div className="h-full flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800">
-                    {/* Mobile menu header - Fixed */}
                     <div className="flex-shrink-0 flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-800">
                       <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Menu</h2>
                       <button
@@ -228,7 +285,6 @@ export const EchoTalk: React.FC = () => {
                       </button>
                     </div>
                     
-                    {/* Scrollable content area */}
                     <div className="flex-1 overflow-hidden">
                       <SidebarContent
                         view={view}
@@ -257,7 +313,6 @@ export const EchoTalk: React.FC = () => {
               animate={{ opacity: 1, x: 0 }}
               className="hidden lg:flex lg:w-80 lg:flex-shrink-0"
             >
-              {/* Full height container with proper overflow */}
               <div className="w-full h-full">
                 <SidebarContent
                   view={view}
@@ -277,69 +332,137 @@ export const EchoTalk: React.FC = () => {
               </div>
             </motion.div>
 
-            {/* Chat Area */}
+            {/* Main Content Area */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               className="flex-1 flex flex-col"
             >
-              <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden flex-1 flex flex-col">
-                {selectedChatUser ? (
-                  <>
-                    {/* Chat Header */}
-                    <div className="p-4 border-b border-gray-200 dark:border-gray-800">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="relative">
-                            <img
-                              src={selectedChatUser.userImg || 'https://images.unsplash.com/photo-1511367461989-f85a21fda167?q=80&w=100&fit=crop'}
-                              alt={selectedChatUser.displayName}
-                              className="w-12 h-12 rounded-full object-cover border-2 border-white dark:border-gray-800 shadow-sm"
-                            />
-                            <div className="absolute -bottom-0.5 -right-0.5">
-                              <PresenceIndicator 
-                                userId={selectedChatUser.uid}
-                                showText={false}
-                                size="md"
-                              />
+              {/* Chat Display */}
+              {displayView === 'chatDisplay' && (
+                <AnimatePresence>
+                  <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden flex-1 flex flex-col">
+                    {selectedChatUser ? (
+                      <>
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="relative">
+                                <img
+                                  src={selectedChatUser.userImg || 'https://images.unsplash.com/photo-1511367461989-f85a21fda167?q=80&w=100&fit=crop'}
+                                  alt={selectedChatUser.displayName}
+                                  className="w-12 h-12 rounded-full object-cover border-2 border-white dark:border-gray-800 shadow-sm"
+                                />
+                                <div className="absolute -bottom-0.5 -right-0.5">
+                                  <PresenceIndicator 
+                                    userId={selectedChatUser.uid}
+                                    showText={false}
+                                    size="md"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <h2 className="font-semibold text-lg text-gray-900 dark:text-white">
+                                  {selectedChatUser.displayName}
+                                </h2>
+                                <PresenceIndicator 
+                                  userId={selectedChatUser.uid}
+                                  showText={true}
+                                  size="sm"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                className="p-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700 transition-all"
+                                title="Start video call"
+                              >
+                                <Video className="w-5 h-5" />
+                              </motion.button>
+                              <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                className="p-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 transition-all"
+                                title="Start audio call"
+                              >
+                                <Phone className="w-5 h-5" />
+                              </motion.button>
                             </div>
                           </div>
-                          <div>
-                            <h2 className="font-semibold text-lg text-gray-900 dark:text-white">
-                              {selectedChatUser.displayName}
-                            </h2>
-                            <PresenceIndicator 
-                              userId={selectedChatUser.uid}
-                              showText={true}
-                              size="sm"
-                            />
+                        </div>
+
+                        {!activeChatRoom ? (
+                          <div className="flex-1 flex items-center justify-center p-8">
+                            <motion.div
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="text-center"
+                            >
+                              <motion.div
+                                className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/20 dark:to-purple-900/20 mb-6"
+                                whileHover={{ rotate: 180 }}
+                                transition={{ duration: 0.3 }}
+                              >
+                                <MessageCircle className="w-16 h-16 text-blue-600 dark:text-blue-400" />
+                              </motion.div>
+                              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
+                                Start a conversation
+                              </h3>
+                              <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-sm mx-auto">
+                                You haven't started chatting with {selectedChatUser.displayName} yet.
+                                Send your first message to begin the conversation.
+                              </p>
+                              <motion.button
+                                onClick={handleStartChat}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg"
+                              >
+                                Start Chat
+                              </motion.button>
+                            </motion.div>
                           </div>
-                        </div>
-
-                        {/* Call Buttons */}
-                        <div className="flex items-center gap-2">
-                          <motion.button
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.9 }}
-                            className="p-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Start video call"
-                          >
-                            <Video className="w-5 h-5" />
-                          </motion.button>
-                          <motion.button
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.9 }}
-                            className="p-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Start audio call"
-                          >
-                            <Phone className="w-5 h-5" />
-                          </motion.button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Messages Area */}
-                    {!activeChatRoom ? (
+                        ) : (
+                          <>
+                            <div className="flex-1 custom-scrollbar overflow-y-auto p-4">
+                              {messagesLoading ? (
+                                <div className="flex items-center justify-center h-full">
+                                  <div className="text-center">
+                                    <motion.div
+                                      animate={{ rotate: 360 }}
+                                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                                      className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"
+                                    />
+                                    <p className="text-gray-600 dark:text-gray-400">Loading messages...</p>
+                                  </div>
+                                </div>
+                              ) : convertedMessages.length === 0 ? (
+                                <div className="flex items-center justify-center h-full">
+                                  <div className="text-center">
+                                    <MessageCircle className="w-16 h-16 text-gray-400 dark:text-gray-600 mx-auto mb-4" />
+                                    <p className="text-gray-600 dark:text-gray-400">No messages yet. Start the conversation!</p>
+                                  </div>
+                                </div>
+                              ) : (
+                                <MessagesList 
+                                  loading={messagesLoading}
+                                  messages={convertedMessages}
+                                  currentUserId={user?.uid || ''}
+                                />
+                              )}
+                            </div>
+                            <MessageInput 
+                              onSend={handleSendMessage}
+                              disabled={!activeChatRoom || sending}
+                              sending={sending}
+                            />
+                          </>
+                        )}
+                      </>
+                    ) : (
                       <div className="flex-1 flex items-center justify-center p-8">
                         <motion.div
                           initial={{ opacity: 0, y: 20 }}
@@ -348,100 +471,67 @@ export const EchoTalk: React.FC = () => {
                         >
                           <motion.div
                             className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/20 dark:to-purple-900/20 mb-6"
-                            whileHover={{ rotate: 180 }}
-                            transition={{ duration: 0.3 }}
+                            animate={{ scale: [1, 1.05, 1] }}
+                            transition={{ duration: 2, repeat: Infinity }}
                           >
-                            <MessageCircle className="w-16 h-16 text-blue-600 dark:text-blue-400" />
+                            <Users className="w-16 h-16 text-blue-600 dark:text-blue-400" />
                           </motion.div>
                           <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
-                            Start a conversation
+                            Welcome to EchoTalk
                           </h3>
-                          <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-sm mx-auto">
-                            You haven't started chatting with {selectedChatUser.displayName} yet.
-                            Send your first message to begin the conversation.
+                          <p className="text-gray-600 dark:text-gray-400 max-w-sm mx-auto mb-6">
+                            Select a user from the sidebar to start chatting.
+                            Connect with friends, colleagues, or meet new people.
                           </p>
-                          <motion.button
-                            onClick={handleStartChat}
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg"
-                          >
-                            Start Chat
-                          </motion.button>
                         </motion.div>
                       </div>
-                    ) : (
-                      <>
-                        <div className="flex-1 custom-scrollbar overflow-y-auto p-4">
-                          {messagesLoading ? (
-                            <div className="flex items-center justify-center h-full">
-                              <div className="text-center">
-                                <motion.div
-                                  animate={{ rotate: 360 }}
-                                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                                  className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-3"
-                                />
-                                <p className="text-gray-600 dark:text-gray-400">Loading messages...</p>
-                              </div>
-                            </div>
-                          ) : convertedMessages.length === 0 ? (
-                            <div className="flex items-center justify-center h-full">
-                              <div className="text-center">
-                                <MessageCircle className="w-16 h-16 text-gray-400 dark:text-gray-600 mx-auto mb-4" />
-                                <p className="text-gray-600 dark:text-gray-400">No messages yet. Start the conversation!</p>
-                              </div>
-                            </div>
-                          ) : (
-                            <MessagesList 
-                              loading={messagesLoading}
-                              messages={convertedMessages}
-                              currentUserId={user?.uid || ''}
-                            />
-                          )}
-                        </div>
-                        <MessageInput 
-                          onSend={handleSendMessage}
-                          disabled={!activeChatRoom || sending}
-                          sending={sending}
-                        />
-                      </>
                     )}
-                  </>
-                ) : (
-                  <div className="flex-1 flex items-center justify-center p-8">
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-center"
-                    >
-                      <motion.div
-                        className="inline-flex p-4 rounded-2xl bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/20 dark:to-purple-900/20 mb-6"
-                        animate={{ scale: [1, 1.05, 1] }}
-                        transition={{ duration: 2, repeat: Infinity }}
-                      >
-                        <Users className="w-16 h-16 text-blue-600 dark:text-blue-400" />
-                      </motion.div>
-                      <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-3">
-                        Welcome to EchoTalk
-                      </h3>
-                      <p className="text-gray-600 dark:text-gray-400 max-w-sm mx-auto mb-6">
-                        Select a user from the sidebar to start chatting.
-                        Connect with friends, colleagues, or meet new people.
-                      </p>
-                      <div className="flex items-center justify-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-green-500" />
-                          <span>Online users</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-blue-500" />
-                          <span>Unread messages</span>
-                        </div>
-                      </div>
-                    </motion.div>
                   </div>
-                )}
-              </div>
+                </AnimatePresence>
+              )}
+
+              {/* Location Display */}
+              {displayView === 'locationDisplay' && (
+                <AnimatePresence>
+                  <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden flex-1 flex">
+                    <div className="w-80 border-r border-gray-200 dark:border-gray-800 p-4 overflow-y-auto custom-scrollbar">
+                      <LocationSharingPanel
+                        sharing={sharing}
+                        location={location}
+                        error={locationError}
+                        users={users}
+                        watchedUsers={watchedUsers}
+                        onStartSharing={startSharing}
+                        onStopSharing={stopSharing}
+                        onWatchUser={handleWatchFriend}
+                        onUnwatchUser={handleUnwatchFriend}
+                      />
+                    </div>
+
+                    <div className="flex-1">
+                      <LocationMap
+                        currentLocation={location}
+                        friendLocations={friendLocations}
+                        onBack={() => setDisplayView('chatDisplay')}
+                      />
+                    </div>
+                  </div>
+                </AnimatePresence>
+              )}
+
+              {/* Settings Display */}
+              {displayView === 'settingsDisplay' && (
+                <AnimatePresence>
+                  <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden flex-1 flex flex-col">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+                      <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Settings</h2>
+                    </div>
+                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                      <ProfileSettings onBack={() => setDisplayView('chatDisplay')}/>
+                    </div>
+                  </div>
+                </AnimatePresence>
+              )}
             </motion.div>
           </div>
         </div>
