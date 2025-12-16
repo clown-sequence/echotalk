@@ -87,31 +87,6 @@ interface UsePresenceReturn {
   updateActivity: () => Promise<void>;
 }
 
-// ============================================
-// Main Hook Implementation
-// ============================================
-
-/**
- * Hook to manage user's online presence across Firestore and RTDB
- * 
- * Features:
- * - Automatic online/offline status management
- * - Activity tracking with throttling
- * - Disconnect handling via RTDB
- * - Page visibility detection
- * - Retry logic for failed operations
- * - Comprehensive error handling
- * 
- * @example
- * ```tsx
- * const { setOnline, setOffline } = usePresence({
- *   userId: currentUser?.uid,
- *   enabled: !!currentUser,
- *   activityThrottleMs: 30000, // 30 seconds
- *   debug: true
- * });
- * ```
- */
 export const usePresence = ({
   userId,
   enabled = true,

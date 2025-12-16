@@ -38,20 +38,13 @@ import {
   isValidPassword 
 } from '../lib/utils';
 
-// ============================================
-// CONTEXT CREATION
-// ============================================
+
+interface AuthProviderProps {
+  children: ReactNode;
+}
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// ============================================
-// FIRESTORE USER MANAGEMENT FUNCTIONS
-// ============================================
-
-/**
- * Create or update user document in Firestore
- * Enhanced with better error handling and logging
- */
 async function createOrUpdateUserDocument(
   user: User,
   additionalData?: Partial<Omit<UserDocument, 'createdAt' | 'updatedAt'>>
@@ -61,10 +54,6 @@ async function createOrUpdateUserDocument(
     return;
   }
 
-  console.log('📝 Starting createOrUpdateUserDocument for:', user.uid);
-  console.log('📝 User email:', user.email);
-  console.log('📝 Additional data:', additionalData);
-
   const userRef: DocumentReference = doc(db, 'users', user.uid);
   
   try {
@@ -72,37 +61,20 @@ async function createOrUpdateUserDocument(
     const userSnapshot: DocumentSnapshot = await getDoc(userRef);
     
     if (!userSnapshot.exists()) {
-      console.log('✨ User document does NOT exist, creating new one...');
-      
       // Create new user document with server timestamps
       const userData = {
         uid: user.uid,
         email: user.email || '',
         displayName: user.displayName || user.email?.split('@')[0] || 'User',
-        userImg: user.photoURL || undefined,
+        userImg: user.photoURL || null,
         role: 'user' as const,
         createdAt: serverTimestamp() as FieldValue,
         updatedAt: serverTimestamp() as FieldValue,
         ...additionalData
       };
       
-      console.log('📄 User data to be created:', userData);
-      
       await setDoc(userRef, userData);
-      console.log('✅ User document created successfully:', user.uid);
       
-      // Verify the document was created
-      const verifySnapshot = await getDoc(userRef);
-      if (verifySnapshot.exists()) {
-        console.log('✅ Verified: Document exists in Firestore');
-        console.log('📄 Document data:', verifySnapshot.data());
-      } else {
-        console.error('❌ WARNING: Document was not found after creation!');
-      }
-    } else {
-      console.log('📝 User document exists, updating...');
-      
-      // Update existing user document
       const updateData = {
         email: user.email || '',
         displayName: user.displayName || undefined,
@@ -111,21 +83,11 @@ async function createOrUpdateUserDocument(
         ...additionalData
       };
       
-      console.log('📄 Update data:', updateData);
-      
       await setDoc(userRef, updateData, { merge: true });
-      console.log('✅ User document updated successfully:', user.uid);
     }
   } catch (error: unknown) {
     const err = error as { code?: string; message?: string; name?: string };
     
-    console.error('❌ ERROR in createOrUpdateUserDocument:');
-    console.error('Error code:', err?.code);
-    console.error('Error message:', err?.message);
-    console.error('Error name:', err?.name);
-    console.error('Full error:', error);
-    
-    // Handle offline errors gracefully
     if (err?.code === 'unavailable' || err?.message?.includes('offline')) {
       console.warn('⚠️ Cannot sync user document while offline. Will sync when connection is restored.');
       return;
@@ -140,62 +102,40 @@ async function createOrUpdateUserDocument(
   }
 }
 
-/**
- * Get user document from Firestore
- */
 async function getUserDocument(uid: string): Promise<UserDocument | null> {
   try {
-    console.log('🔍 Fetching user document for:', uid);
     const userRef: DocumentReference = doc(db, 'users', uid);
     const userSnapshot: DocumentSnapshot = await getDoc(userRef);
     
     if (userSnapshot.exists()) {
-      console.log('✅ User document found');
       return userSnapshot.data() as UserDocument;
     }
-    console.log('⚠️ User document not found');
     return null;
   } catch (error: unknown) {
     const err = error as { code?: string; message?: string };
-    console.error('❌ Error fetching user document:', error);
     
-    // Handle offline errors gracefully
     if (err?.code === 'unavailable' || err?.message?.includes('offline')) {
-      console.warn('⚠️ Cannot fetch user document while offline.');
       return null;
     }
     return null;
   }
 }
 
-/**
- * Update user document in Firestore
- */
 async function updateUserDocumentInFirestore(
   uid: string,
   data: Partial<Omit<UserDocument, 'uid' | 'createdAt' | 'updatedAt'>>
 ): Promise<void> {
   try {
-    console.log('📝 Updating user document:', uid);
     const userRef: DocumentReference = doc(db, 'users', uid);
     const updateData = {
       ...data,
       updatedAt: serverTimestamp() as FieldValue
     };
     await updateDoc(userRef, updateData);
-    console.log('✅ User document updated in Firestore:', uid);
   } catch (error: unknown) {
     console.error('❌ Error updating user document:', error);
     throw error;
   }
-}
-
-// ============================================
-// AUTH PROVIDER COMPONENT
-// ============================================
-
-interface AuthProviderProps {
-  children: ReactNode;
 }
 
 export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element {
@@ -270,11 +210,6 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
       unsubscribe();
     };
   }, []);
-
-  /**
-   * Sign up with email and password
-   * Enhanced with better Firestore document creation
-   */
   const signUp = async (
     credentials: SignUpCredentials
   ): Promise<UserCredential> => {
@@ -316,29 +251,20 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
 
       setLoading(true);
       
-      console.log('🔑 Creating Firebase Auth user...');
       const userCredential: UserCredential = await createUserWithEmailAndPassword(
         auth, 
         email.trim(), 
         password
       );
       
-      console.log('✅ Firebase Auth user created:', userCredential.user.uid);
-      
-      // Update profile with display name BEFORE creating Firestore document
       if (displayName && userCredential.user) {
         console.log('📝 Updating auth profile with display name...');
         await updateProfile(userCredential.user, {
           displayName: displayName.trim()
         });
-        console.log('✅ Auth profile updated');
-        
-        // Refresh the user to get updated profile
         await userCredential.user.reload();
       }
       
-      // CRITICAL: Create Firestore document AFTER profile update
-      console.log('📄 Creating Firestore user document...');
       try {
         await createOrUpdateUserDocument(userCredential.user, {
           displayName: displayName?.trim() || undefined
@@ -346,18 +272,13 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
         console.log('✅ Firestore document creation completed');
       } catch (firestoreError) {
         console.error('❌ CRITICAL: Failed to create Firestore document:', firestoreError);
-        // Don't throw here - the auth account is already created
-        // Instead, the onAuthStateChanged listener will retry
       }
       
-      console.log('✅ Sign up process completed successfully');
       return userCredential;
       
     } catch (err: unknown) {
       const authError = err as AuthError;
       const errorResponse: AuthErrorResponse = getAuthErrorMessage(authError);
-      
-      console.error('❌ Sign up error:', errorResponse);
       
       if (authError.code === 'auth/email-already-in-use') {
         errorResponse.message = 'An account with this email already exists. Please sign in instead.';
@@ -370,9 +291,6 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
     }
   };
 
-  /**
-   * Sign in with email and password
-   */
   const signIn = async (
     credentials: SignInCredentials
   ): Promise<UserCredential> => {
@@ -380,9 +298,6 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
     
     try {
       setError(null);
-      console.log('🔑 Starting sign in process...');
-      console.log('🔑 Email:', email);
-      
       if (!email || !password) {
         const validationError: AuthErrorResponse = {
           code: 'auth/invalid-input',
@@ -408,11 +323,6 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
         email.trim(), 
         password
       );
-      
-      console.log('✅ Sign in successful:', userCredential.user.email);
-      
-      // The onAuthStateChanged listener will handle Firestore document creation
-      // But we can also try it here for immediate consistency
       try {
         await createOrUpdateUserDocument(userCredential.user);
       } catch (firestoreError) {
@@ -441,10 +351,6 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
       setLoading(false);
     }
   };
-
-  /**
-   * Update user profile (displayName, userImg)
-   */
   const updateUserProfile = async (data: UpdateProfileData): Promise<void> => {
     try {
       setError(null);
@@ -493,10 +399,6 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
       setLoading(false);
     }
   };
-
-  /**
-   * Update user password with current password verification
-   */
   const updateUserPassword = async (data: UpdatePasswordData): Promise<void> => {
     try {
       setError(null);
@@ -557,9 +459,6 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
     }
   };
 
-  /**
-   * Logout current user
-   */
   const logout = async (): Promise<void> => {
     try {
       setError(null);
@@ -574,42 +473,22 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
     }
   };
 
-  /**
-   * Clear error state
-   */
   const clearError = (): void => {
     setError(null);
   };
-
-  /**
-   * Check if user is authenticated
-   */
   const isAuthenticated: boolean = !!user;
 
-  /**
-   * Get current user ID
-   */
   const getUserId = (): string | null => {
     return user?.uid || null;
   };
-
-  /**
-   * Get current user email
-   */
   const getUserEmail = (): string | null => {
     return user?.email || null;
   };
 
-  /**
-   * Get current user display name
-   */
   const getUserDisplayName = (): string | null => {
     return user?.displayName || null;
   };
 
-  /**
-   * Get user document from Firestore
-   */
   const getUserDoc = async (): Promise<UserDocument | null> => {
     if (!user) return null;
     return await getUserDocument(user.uid);
@@ -639,10 +518,6 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
     </AuthContext.Provider>
   );
 }
-
-// ============================================
-// CUSTOM HOOK
-// ============================================
 
 export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);

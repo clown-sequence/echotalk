@@ -1,27 +1,8 @@
 import React, { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageCircle, Users, Clock } from 'lucide-react';
-
-// ============================================
-// TYPE IMPORTS - Import ALL types from central location
-// ============================================
-
-/**
- * IMPORTANT: All types are imported from the central types file
- * DO NOT define types locally in this file
- */
-
-// Import types from central types file
 import type { UserDocument, ChatRoomDocument } from '../types';
 
-// ============================================
-// LOCAL TYPE DEFINITIONS (Component-specific only)
-// ============================================
-
-/**
- * Firestore Timestamp type - represents a point in time
- * Can be either a Firestore Timestamp object or a serialized version
- */
 interface FirestoreTimestamp {
   toDate?: () => Date;
   toMillis?: () => number;
@@ -29,9 +10,6 @@ interface FirestoreTimestamp {
   _nanoseconds?: number;
 }
 
-/**
- * Message structure in chat room (simplified for this component)
- */
 interface LastMessage {
   text: string;
   senderId: string;
@@ -39,18 +17,11 @@ interface LastMessage {
   id?: string;
 }
 
-/**
- * Enhanced chat room with computed user information
- * Used internally after processing raw chat room data
- */
 interface ChatRoomWithUser extends Omit<ChatRoomDocument, 'unreadCount'> {
   otherUser: UserDocument;
   unreadCount: number;
 }
 
-/**
- * Props for the UsersList component
- */
 interface UsersListProps {
   users: UserDocument[];
   chatRooms: ChatRoomDocument[];
@@ -61,45 +32,17 @@ interface UsersListProps {
   onSelectChatRoom: (roomId: string, otherUser: UserDocument) => void;
   loading: boolean;
 }
-
-// ============================================
-// PRESENCE INDICATOR COMPONENT
-// ============================================
-
-/**
- * Props for PresenceIndicator component
- */
 interface PresenceIndicatorProps {
   userId: string;
   showText: boolean;
   size: 'sm' | 'md';
 }
 
-/**
- * PresenceIndicator component - shows online/offline status
- * 
- * IMPLEMENTATION OPTIONS:
- * 
- * 1. Simple Mock (current): Uses userId hash for consistent results
- * 2. Firebase Realtime: Use Firebase Realtime Database presence
- * 3. Firestore: Store status in user document
- * 4. Custom Hook: Create usePresence(userId) hook
- */
 const PresenceIndicator: React.FC<PresenceIndicatorProps> = ({ userId, showText, size }) => {
-  // Mock online status using userId hash (deterministic, not random)
-  // This ensures consistent results across renders
   const isOnline = React.useMemo(() => {
-    // Simple hash: sum of character codes
     const hash = userId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     return hash % 2 === 0; // Even hash = online, odd = offline
   }, [userId]);
-  
-  // Alternative: Always show as online for demo
-  // const isOnline = true;
-  
-  // TODO: Replace with real presence logic
-  // const isOnline = usePresence(userId);
-  
   const dotSize = size === 'sm' ? 'w-2 h-2' : 'w-3 h-3';
   const textSize = size === 'sm' ? 'text-xs' : 'text-sm';
   const bgColor = isOnline ? 'bg-green-500' : 'bg-gray-400';
@@ -143,13 +86,6 @@ const getTimeInMillis = (timestamp: FirestoreTimestamp | string | null | undefin
   
   return 0;
 };
-
-/**
- * Converts timestamp to Date object with null safety
- * 
- * @param timestamp - The timestamp to convert
- * @returns Date object or null if invalid
- */
 const toDate = (timestamp: FirestoreTimestamp | string | null | undefined): Date | null => {
   if (!timestamp) return null;
   
@@ -177,17 +113,6 @@ const toDate = (timestamp: FirestoreTimestamp | string | null | undefined): Date
   }
 };
 
-/**
- * Formats a timestamp for display in the UI
- * Shows time (HH:mm) for today, relative time for other dates
- * 
- * @param timestamp - The timestamp to format
- * @returns Formatted string like "14:30" or "2 hours ago"
- * 
- * @example
- * formatLastMessageTime(todayTimestamp) // "14:30"
- * formatLastMessageTime(yesterdayTimestamp) // "1 day ago"
- */
 const formatLastMessageTime = (timestamp: FirestoreTimestamp | string | null | undefined): string => {
   const date = toDate(timestamp);
   if (!date) return '';
@@ -224,17 +149,6 @@ const formatLastMessageTime = (timestamp: FirestoreTimestamp | string | null | u
   }
 };
 
-/**
- * Extracts and truncates message text from various message formats
- * 
- * @param lastMessage - Can be string, Message object, or null/undefined
- * @returns Truncated message text for display (max 40 chars)
- * 
- * @example
- * getLastMessageText("Hello world") // "Hello world"
- * getLastMessageText({ text: "Very long message..." }) // "Very long message... (truncated)"
- * getLastMessageText(null) // "No messages yet"
- */
 const getLastMessageText = (lastMessage: string | LastMessage | null | undefined): string => {
   const MAX_LENGTH = 40;
   const TRUNCATE_SUFFIX = '...';
@@ -253,24 +167,6 @@ const getLastMessageText = (lastMessage: string | LastMessage | null | undefined
   return 'Tap to start chatting';
 };
 
-// ============================================
-// MAIN COMPONENT
-// ============================================
-
-/**
- * UsersList Component
- * 
- * Displays a list of either:
- * 1. Active chat conversations (view='chats')
- * 2. Available users to start new chats (view='users')
- * 
- * Features:
- * - Real-time presence indicators
- * - Unread message counts
- * - Last message preview
- * - Smooth animations
- * - Responsive design with dark mode support
- */
 export const UsersList: React.FC<UsersListProps> = ({
   users,
   chatRooms,
@@ -281,18 +177,6 @@ export const UsersList: React.FC<UsersListProps> = ({
   onSelectChatRoom,
   loading,
 }) => {
-  /**
-   * MEMO 1: Enhance chat rooms with user information
-   * 
-   * Process each chat room to:
-   * 1. Find the other participant (not the current user)
-   * 2. Get that user's full information
-   * 3. Extract unread count for current user
-   * 4. Filter out rooms where we can't find the other user
-   * 
-   * Dependencies: [chatRooms, users, currentUserId]
-   * Recalculates only when these change
-   */
   const chatRoomsWithUsers = useMemo<ChatRoomWithUser[]>(() => {
     return chatRooms
       .map((room): ChatRoomWithUser | null => {
@@ -316,11 +200,8 @@ export const UsersList: React.FC<UsersListProps> = ({
           return null;
         }
         
-        // Extract unread count for current user (default to 0)
         const unreadCountForUser: number = room.unreadCount?.[currentUserId] ?? 0;
         
-        // Create the enhanced room object
-        // We destructure to remove the original unreadCount and add our normalized one
         const { unreadCount: _originalUnreadCount, ...restOfRoom } = room;
         console.log(_originalUnreadCount);
         
@@ -330,20 +211,9 @@ export const UsersList: React.FC<UsersListProps> = ({
           unreadCount: unreadCountForUser,
         };
       })
-      // Filter out null values (rooms where we couldn't find the other user)
-      // Type guard ensures TypeScript knows remaining items are ChatRoomWithUser
       .filter((room): room is ChatRoomWithUser => room !== null);
   }, [chatRooms, users, currentUserId]);
 
-  /**
-   * MEMO 2: Sort chat rooms by most recent activity
-   * 
-   * Sorts chat rooms in descending order by lastMessageTime
-   * (most recent first). This ensures the most active chats
-   * appear at the top of the list.
-   * 
-   * Dependencies: [chatRoomsWithUsers]
-   */
   const sortedChatRooms = useMemo<ChatRoomWithUser[]>(() => {
     return [...chatRoomsWithUsers].sort((a, b) => {
       const timeA = getTimeInMillis(a.lastMessageTime);
@@ -352,22 +222,11 @@ export const UsersList: React.FC<UsersListProps> = ({
     });
   }, [chatRoomsWithUsers]);
 
-  /**
-   * MEMO 3: Filter users who don't have active chats
-   * 
-   * Creates a list of users who are NOT currently in any
-   * chat room with the current user. These are potential
-   * new conversation starters.
-   * 
-   * Dependencies: [users, chatRooms, currentUserId]
-   */
   const usersWithoutChats = useMemo<UserDocument[]>(() => {
-    // Create a Set of all user IDs that are in chat rooms
     const chatUserIds = new Set<string>(
       chatRooms.flatMap((room: ChatRoomDocument) => room.participants)
     );
     
-    // Filter users who are NOT in this Set
     return users.filter((user: UserDocument) => 
       user.uid !== currentUserId && // Exclude current user
       !chatUserIds.has(user.uid)    // Exclude users in chats

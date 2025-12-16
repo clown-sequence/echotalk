@@ -1,29 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, Users, Menu, MessageCircle, Video, Phone, TestTube, Settings, Bell } from 'lucide-react';
+import { LogOut, Users, Menu, MessageCircle, Video, Phone, Settings, Bell } from 'lucide-react';
 import type { User as FirebaseAuthUser } from 'firebase/auth';
 import { useAuth } from '../contexts/auth-contexts';
 import { useUsers } from '../hooks/use-users';
 import { useChatRooms } from '../hooks/use-chat-rooms';
 import { useMessages } from '../hooks/use-message';
 import { usePresence } from '../hooks/use-presence';
-import { useVideoCall } from '../hooks/use-video-call';
 import { MessagesList } from '../components/messages-list';
 import { MessageInput } from '../components/message-input';
 import { PresenceIndicator } from '../components/presence-indicator';
-import { DeviceTest } from '../components/device-test';
-import {
-  IncomingCallModal,
-  OutgoingCallModal,
-  VideoCallWindow,
-} from '../components/video-call-ui';
-import { 
-  type CallDocument,  
-  type UserDocument, 
-  type MessageDocument, 
-  type ChatRoomDocument,
-  CALL_STATUS, 
-  CALL_TYPE 
+import type { 
+  UserDocument, 
+  MessageDocument, 
+  ChatRoomDocument,
 } from '../types';
 import { usersToUserDocuments } from '../lib/utils';
 import { SidebarContent } from './sidebar-content';
@@ -36,40 +26,12 @@ export const EchoTalk: React.FC = () => {
   const [activeChatRoom, setActiveChatRoom] = useState<string | null>(null);
   const [selectedChatUser, setSelectedChatUser] = useState<UserDocument | null>(null);
   const [sending, setSending] = useState<boolean>(false);
-  const [showDeviceTest, setShowDeviceTest] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Video call state
-  const [incomingCall, setIncomingCall] = useState<CallDocument | null>(null);
-
-  // Initialize presence tracking
   usePresence({ 
     userId: user?.uid,
     enabled: !!user?.uid 
   });
-
-  // Initialize video call hook
-  const {
-    callState,
-    startCall,
-    answerCall,
-    endCall,
-    declineCall,
-    toggleMute,
-    toggleVideo,
-  } = useVideoCall({
-    currentUserId: user?.uid || '',
-    onCallReceived: (call: CallDocument) => {
-      console.log('📞 Incoming call received:', call);
-      setIncomingCall(call);
-    },
-    onCallEnded: () => {
-      console.log('📵 Call ended');
-      setIncomingCall(null);
-    },
-  });
-
-  // Get users from hook
   const { users: rawUsers } = useUsers({
     excludeUid: user?.uid,
     enableRealtime: true,
@@ -77,7 +39,6 @@ export const EchoTalk: React.FC = () => {
     currentUserId: user?.uid,
   });
 
-  // Convert to UserDocument[]
   const users = useMemo<UserDocument[]>(() => {
     const firebaseUsers = rawUsers as unknown as FirebaseAuthUser[];
     return usersToUserDocuments(firebaseUsers);
@@ -122,7 +83,6 @@ export const EchoTalk: React.FC = () => {
     }, 0);
   }, [chatRooms, user?.uid]);
 
-  // Chat handlers
   const handleSelectUser = async (selectedUser: UserDocument): Promise<void> => {
     setSelectedChatUser(selectedUser);
     const existingRoom = chatRooms.find((room: ChatRoomDocument) => 
@@ -173,68 +133,6 @@ export const EchoTalk: React.FC = () => {
     }
   };
 
-  // Video call handlers
-  const handleStartVideoCall = async (): Promise<void> => {
-    if (!selectedChatUser) return;
-    
-    try {
-      await startCall(
-        selectedChatUser.uid,
-        selectedChatUser.displayName,
-        selectedChatUser.userImg || '',
-        CALL_TYPE.VIDEO
-      );
-    } catch (error) {
-      console.error('Error starting video call:', error);
-    }
-  };
-
-  const handleStartAudioCall = async (): Promise<void> => {
-    if (!selectedChatUser) return;
-    
-    try {
-      await startCall(
-        selectedChatUser.uid,
-        selectedChatUser.displayName,
-        selectedChatUser.userImg || '',
-        CALL_TYPE.AUDIO
-      );
-    } catch (error) {
-      console.error('Error starting audio call:', error);
-    }
-  };
-
-  const handleAnswerCall = async (): Promise<void> => {
-    if (!incomingCall) return;
-    
-    try {
-      await answerCall(incomingCall.id);
-      setIncomingCall(null);
-    } catch (error) {
-      console.error('Error answering call:', error);
-    }
-  };
-
-  const handleDeclineCall = async (): Promise<void> => {
-    if (!incomingCall) return;
-    
-    try {
-      await declineCall(incomingCall.id);
-      setIncomingCall(null);
-    } catch (error) {
-      console.error('Error declining call:', error);
-    }
-  };
-
-  const handleEndCall = async (): Promise<void> => {
-    try {
-      await endCall();
-    } catch (error) {
-      console.error('Error ending call:', error);
-    }
-  };
-
-  // Filter chat rooms and users based on search
   const filteredChatRooms = useMemo<ChatRoomDocument[]>(() => {
     if (!searchQuery) return chatRooms;
     return chatRooms.filter((room: ChatRoomDocument) => {
@@ -254,56 +152,8 @@ export const EchoTalk: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-800 dark:to-black transition-colors duration-500">
-      {/* Incoming Call Modal */}
-      <AnimatePresence>
-        {incomingCall && !callState.isInCall && (
-          <IncomingCallModal
-            callerName={incomingCall.callerName}
-            callerImage={incomingCall.callerImage}
-            callType={incomingCall.callType}
-            onAccept={handleAnswerCall}
-            onDecline={handleDeclineCall}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Outgoing Call Modal */}
-      <AnimatePresence>
-        {callState.isInCall && 
-         callState.status === CALL_STATUS.RINGING && 
-         callState.isCaller && (
-          <OutgoingCallModal
-            receiverName={callState.otherUser?.displayName || 'Unknown'}
-            receiverImage={callState.otherUser?.userImg}
-            callType={callState.callType!}
-            onCancel={handleEndCall}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Video Call Window */}
-      <AnimatePresence>
-        {callState.isInCall && 
-         callState.status === CALL_STATUS.CONNECTED && (
-          <VideoCallWindow
-            callState={callState}
-            onEndCall={handleEndCall}
-            onToggleMute={toggleMute}
-            onToggleVideo={toggleVideo}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Device Test Modal */}
-      <AnimatePresence>
-        {showDeviceTest && (
-          <DeviceTest onClose={() => setShowDeviceTest(false)} />
-        )}
-      </AnimatePresence>
-
-      {/* Main App UI */}
+      
       <div className="min-h-screen">
-        {/* Header */}
         <motion.header
           initial={{ y: -100 }}
           animate={{ y: 0 }}
@@ -339,13 +189,6 @@ export const EchoTalk: React.FC = () => {
                 </button>
                 <button className="p-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
                   <Settings className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => setShowDeviceTest(true)}
-                  className="p-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
-                  title="Test Camera & Microphone"
-                >
-                  <TestTube className="w-5 h-5" />
                 </button>
                 <motion.button
                   onClick={logout}
@@ -476,8 +319,6 @@ export const EchoTalk: React.FC = () => {
                         {/* Call Buttons */}
                         <div className="flex items-center gap-2">
                           <motion.button
-                            onClick={handleStartVideoCall}
-                            disabled={callState.isInCall}
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.9 }}
                             className="p-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -486,8 +327,6 @@ export const EchoTalk: React.FC = () => {
                             <Video className="w-5 h-5" />
                           </motion.button>
                           <motion.button
-                            onClick={handleStartAudioCall}
-                            disabled={callState.isInCall}
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.9 }}
                             className="p-3 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
